@@ -1,0 +1,7 @@
+<map id="src/hal/Motor.h" name="src/hal/Motor.h">
+<area shape="rect" id="Node000001" title="Schnittstellendefinition (API) für den Motor&#45;Treiber." alt="" coords="88,5,196,31"/>
+<area shape="rect" id="Node000002" href="$dc/dc2/Motor_8cpp.html" title="Low&#45;Level Treiber für DC&#45;Motoren mittels Software&#45;PWM." alt="" coords="5,79,127,105"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="120,44,81,81,77,77,116,40"/>
+<area shape="rect" id="Node000003" href="$d0/d23/Motion_8cpp.html" title="Implementierung der Antriebslogik (Kinematik&#45;Layer)." alt="" coords="150,79,288,105"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="168,40,208,77,205,81,165,44"/>
+</map>

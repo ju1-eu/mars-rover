@@ -1,0 +1,19 @@
+<map id="HAL::Motor::setSpeed" name="HAL::Motor::setSpeed">
+<area shape="rect" id="Node000001" title="Setzt die Geschwindigkeit für den Differenzialantrieb." alt="" coords="635,104,787,130"/>
+<area shape="rect" id="Node000002" href="$d6/da9/namespaceLogic_1_1Motion.html#a9835d483488c70dfec160fa9e2401128" title="Fährt den Roboter geradeaus rückwärts." alt="" coords="390,5,587,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="678,97,636,70,586,45,555,34,557,29,588,40,638,65,681,93"/>
+<area shape="rect" id="Node000003" href="$d6/da9/namespaceLogic_1_1Motion.html#aadd489a17b5ebac8fecadde4a4685467" title="Fährt den Roboter geradeaus vorwärts." alt="" coords="396,55,582,80"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="634,103,549,84,551,78,635,97"/>
+<area shape="rect" id="Node000004" href="$d3/d08/namespaceHAL_1_1Motor.html#a3e1e2d23d2acaaf52d14ffb3d14a0717" title="Wrapper für sofortigen Stopp." alt="" coords="428,104,549,130"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="619,120,550,120,550,114,619,114"/>
+<area shape="rect" id="Node000008" href="$d6/da9/namespaceLogic_1_1Motion.html#a514868be7332ece7ea13871345b0eb27" title="Führt eine Drehung auf der Stelle (Pivot&#45;Turn) nach links aus." alt="" coords="413,153,564,179"/>
+<area shape="poly" id="edge7_Node000001_Node000008" title=" " alt="" coords="635,136,551,155,549,150,634,131"/>
+<area shape="rect" id="Node000009" href="$d6/da9/namespaceLogic_1_1Motion.html#a13cccda345bdec2615e3d9c3b55d75d7" title="Führt eine Drehung auf der Stelle (Pivot&#45;Turn) nach rechts aus." alt="" coords="408,203,569,228"/>
+<area shape="poly" id="edge8_Node000001_Node000009" title=" " alt="" coords="681,141,638,168,588,194,557,205,555,200,586,189,636,164,678,137"/>
+<area shape="rect" id="Node000005" href="$d3/d08/namespaceHAL_1_1Motor.html#a5fb1fd0dce969911b6ce80cab03dd341" title="Initialisiert die PWM&#45;Timer und Pin&#45;Zustände." alt="" coords="203,80,316,106"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="413,112,317,101,317,96,413,106"/>
+<area shape="rect" id="Node000007" href="$d6/da9/namespaceLogic_1_1Motion.html#a021c49b4ee24ea819240e19e367da45d" title="Stoppt alle Motorbewegungen." alt="" coords="178,129,342,155"/>
+<area shape="poly" id="edge6_Node000004_Node000007" title=" " alt="" coords="413,128,343,136,342,130,412,123"/>
+<area shape="rect" id="Node000006" href="$d6/da9/namespaceLogic_1_1Motion.html#a1c196b6f6c23b9116709afdf04b7e32d" title="Initialisiert die Bewegungslogik und die zugrundeliegende Motor&#45;Hardware." alt="" coords="5,80,130,106"/>
+<area shape="poly" id="edge5_Node000005_Node000006" title=" " alt="" coords="188,96,130,96,130,90,188,90"/>
+</map>

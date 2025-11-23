@@ -1,0 +1,5 @@
+<map id="include/Config.h" name="include/Config.h">
+<area shape="rect" id="Node000001" title="Zentrale Konfigurationsparameter und Systemkonstanten." alt="" coords="8,5,124,31"/>
+<area shape="rect" id="Node000002" href="$dc/dc2/Motor_8cpp.html" title="Low&#45;Level Treiber für DC&#45;Motoren mittels Software&#45;PWM." alt="" coords="5,79,127,105"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="69,46,69,79,63,79,63,46"/>
+</map>

@@ -1,0 +1,5 @@
+<map id="Logic::Motion::turnLeft" name="Logic::Motion::turnLeft">
+<area shape="rect" id="Node000001" title="Führt eine Drehung auf der Stelle (Pivot&#45;Turn) nach links aus." alt="" coords="5,5,157,31"/>
+<area shape="rect" id="Node000002" href="$d3/d08/namespaceHAL_1_1Motor.html#a68bec045616eaddd0c9acbc5d9fe2bfa" title="Setzt die Geschwindigkeit für den Differenzialantrieb." alt="" coords="205,5,356,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="157,16,189,16,189,21,157,21"/>
+</map>

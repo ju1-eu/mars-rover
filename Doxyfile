@@ -1,0 +1,99 @@
+# Doxyfile for GalaxyRVR Profi Firmware
+# Erstellt am: 2025-11-22
+# Autor: Gemini / Basierend auf Jan Unger's Architektur
+# ---------------------------------------------------------------------------
+# Konfiguriert, um die C++-Firmware zu dokumentieren und die
+# Schichten-Architektur (HAL, Logic) zu berücksichtigen.
+# ---------------------------------------------------------------------------
+
+# --- 1. Projektinformationen ---
+PROJECT_NAME           = "GalaxyRVR Profi Firmware"
+PROJECT_BRIEF          = "Embedded C++ Firmware für den Dual-Plattform Roboter (ESP32S3/AVR)"
+PROJECT_NUMBER         = 1.1.0
+PROJECT_LOGO           =
+OUTPUT_DIRECTORY       = docs/doxygen/
+CREATE_SUBDIRS         = YES
+EXCLUDE_SYMBOLS        = pio_venv
+
+# --- 2. Spracheinstellungen ---
+QUIET                  = YES
+WARNINGS               = YES
+EXTRACT_ALL            = YES
+EXTRACT_STATIC         = YES
+EXTRACT_LOCAL_CLASSES  = YES
+MACRO_EXPANSION        = YES
+EXPAND_ONLY_PREDEF     = YES
+PREDEFINED             = ARDUINO_ARCH_ESP32 ARDUINO_ARCH_AVR USE_STL_FEATURES
+
+# --- WICHTIGE KORREKTUR: CUSTOM DOKUMENTATIONS-TAGS (ALIASES) ---
+# Ermöglicht Doxygen das korrekte Parsen der spezifischen Projekttags.
+# (Behebt alle "Found unknown command '@...'" Warnings)
+ALIASES               += "safety=\par Safety Note:"
+ALIASES               += "platform=\par Platform:"
+ALIASES               += "toolchain=\par Toolchain:"
+ALIASES               += "hardware=\par Hardware Dependency:"
+ALIASES               += "dependency=\par Dependency:"
+ALIASES               += "unit=\par Unit:"
+
+# --- 3. Eingabe und Dateistruktur ---
+INPUT                  = ./include ./src ./README.md ./CONTRIBUTING.md
+FILE_PATTERNS          = *.h *.cpp *.md
+RECURSIVE              = YES
+
+# Ausschlüsse: Ignoriere PlatformIO Build-Ordner, die temporären Dateien enthalten
+EXCLUDE_PATTERNS       = */.pio/* */build/* */test/*
+# Fügen Sie hier auch den Ordner hinzu, in dem die Dokumentation gespeichert wird,
+# um keine rekursiven Fehler zu erhalten.
+EXCLUDE_PATTERNS      += */docs/*
+EXCLUDE_SYMBOLS        =
+
+# --- 4. Ausgabeeinstellungen ---
+GENERATE_HTML          = YES
+HTML_OUTPUT            = html
+GENERATE_LATEX         = NO
+GENERATE_MAN           = NO
+GENERATE_RTF           = NO
+GENERATE_XML           = NO
+
+# Verbessert die Lesbarkeit der HTML-Ausgabe
+HTML_EXTRA_STYLESHEET  =
+
+# --- 5. Dokumentationseinstellungen ---
+# Dokumentiert namespaces und Klassen
+HIDE_UNDOC_MEMBERS     = NO
+HIDE_UNDOC_CLASSES     = NO
+CASE_SENSE_NAMES       = YES
+JAVADOC_AUTOBRIEF      = YES
+QT_AUTOBRIEF           = NO
+MULTILINE_CPP_IS_BRIEF = NO
+INHERIT_DOCS           = YES
+SEPARATE_MEMBER_PAGES  = NO
+ALPHABETICAL_INDEX     = YES
+
+# Ermöglicht das Lesen von Markdown-Dateien wie README.md
+OPTIMIZE_OUTPUT_FOR_C  = NO
+OPTIMIZE_OUTPUT_JAVA   = NO
+OPTIMIZE_FOR_FORTRAN   = NO
+OPTIMIZE_OUTPUT_VHDL   = NO
+MARKDOWN_SUPPORT       = YES
+
+# Zeigt die komplette Aufrufstruktur für Funktionen an
+CALL_GRAPH             = YES
+CALLER_GRAPH           = YES
+
+# --- 6. Quellcode-Browsing ---
+SOURCE_BROWSER         = YES
+INLINE_SOURCES         = NO
+STRIP_CODE_COMMENTS    = YES
+REFERENCED_BY_RELATION = YES
+REFERENCES_RELATION    = YES
+REFERENCES_LINK_SOURCE = YES
+
+# --- 7. Diagramme (Graphviz) ---
+HAVE_DOT               = YES
+# CLASS_DIAGRAMS wurde entfernt, da veraltet.
+HIDE_UNDOC_RELATIONS   = NO
+DOT_IMAGE_FORMAT       = svg
+INTERACTIVE_SVG        = YES
+DOT_CLEANUP            = YES
+HTML_DYNAMIC_MENUS     = YES

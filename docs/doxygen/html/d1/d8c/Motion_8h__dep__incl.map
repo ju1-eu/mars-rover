@@ -1,0 +1,5 @@
+<map id="include/Motion.h" name="include/Motion.h">
+<area shape="rect" id="Node000001" title="Schnittstellendefinition für die Fahrzeug&#45;Kinematik&#45;Steuerung." alt="" coords="16,5,133,31"/>
+<area shape="rect" id="Node000002" href="$d0/d23/Motion_8cpp.html" title="Implementierung der Antriebslogik (Kinematik&#45;Layer)." alt="" coords="5,79,144,105"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="77,46,77,79,72,79,72,46"/>
+</map>

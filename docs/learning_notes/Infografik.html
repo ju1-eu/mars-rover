@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interaktive Infografik: GalaxyRVR Architektur & Prinzipien</title>
+
+    <script type="text/javascript" async
+      src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+    </script>
+
+    <style>
+        :root {
+            --color-primary: #007bff; /* Blau */
+            --color-secondary: #6c757d; /* Grau */
+            --color-success: #28a745; /* Grün */
+            --color-danger: #dc3545; /* Rot */
+            --color-background: #f8f9fa;
+            --color-text: #343a40;
+            --color-card-bg: #ffffff;
+            --font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            font-family: var(--font-family);
+            background-color: var(--color-background);
+            color: var(--color-text);
+            margin: 0;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: var(--color-card-bg);
+            border-radius: 12px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+        }
+
+        header {
+            text-align: center;
+            padding-bottom: 20px;
+            border-bottom: 3px solid var(--color-primary);
+            margin-bottom: 30px;
+        }
+
+        header h1 {
+            color: var(--color-primary);
+            font-size: 2.5em;
+            margin-bottom: 5px;
+        }
+
+        /* --- Sektionen & Karten --- */
+        .section-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 25px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background-color: #ffffff;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+        }
+
+        .card h2 {
+            font-size: 1.5em;
+            color: var(--color-text);
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+            margin-top: 0;
+            display: flex;
+            align-items: center;
+        }
+
+        .icon {
+            margin-right: 10px;
+            font-size: 1.2em;
+            color: var(--color-primary);
+        }
+
+        .math-block {
+            background-color: #f1f7fe;
+            border-left: 5px solid var(--color-primary);
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 15px;
+            overflow-x: auto;
+        }
+
+        /* --- Spezielle Karten-Farben --- */
+        .card-architecture h2 .icon { color: var(--color-success); }
+        .card-principles h2 .icon { color: var(--color-danger); }
+        .card-math h2 .icon { color: var(--color-primary); }
+
+        /* --- Interaktiver Architekturbereich (Layered) --- */
+        .architecture-diagram {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 20px;
+        }
+
+        .layer {
+            width: 80%;
+            text-align: center;
+            padding: 10px 20px;
+            margin: 5px 0;
+            border-radius: 6px;
+            font-weight: bold;
+            color: white;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease-in-out;
+            cursor: default;
+        }
+
+        .layer:hover {
+            opacity: 0.9;
+            transform: scale(1.02);
+        }
+
+        .app { background-color: #007bff; } /* Applikation */
+        .logic { background-color: #ffc107; color: var(--color-text);} /* Logik */
+        .hal { background-color: #28a745; } /* HAL */
+        .hardware { background-color: #6c757d; } /* Hardware */
+
+        .arrow {
+            font-size: 2em;
+            color: #ccc;
+            line-height: 0.5;
+            transition: color 0.3s;
+        }
+
+        /* --- Interaktions-Logik (Optional: Kann durch JS erweitert werden) --- */
+        /* Wir nutzen hier nur :hover für den visuellen Effekt */
+
+    </style>
+</head>
+<body>
+
+<div class="container">
+
+    <header>
+        <h1>Robotik-Architektur: GalaxyRVR Profi</h1>
+        <p>Visuelle Dokumentation der Schichten-Architektur und Coding-Prinzipien (Embedded C++).</p>
+    </header>
+
+    <div class="section-grid">
+
+        <div class="card card-architecture">
+            <h2><span class="icon">🧱</span> Schichten-Architektur (SOC)</h2>
+            <p>Das System folgt der **Separation of Concerns**. Jede Schicht kennt nur die direkt unter ihr liegende Schicht.</p>
+
+            <div class="architecture-diagram">
+                <div class="layer app" title="High-Level-Steuerung (FSM)">3. Anwendung (main.cpp)</div>
+                <div class="arrow">↓</div>
+                <div class="layer logic" title="Kinematik, PID-Regler">2. Logik & Verhalten</div>
+                <div class="arrow">↓</div>
+                <div class="layer hal" title="Motor-Treiber, Pin-Steuerung">1. HAL (Hardware Abstraction)</div>
+                <div class="arrow">↓</div>
+                <div class="layer hardware" title="Physische Pins, Motoren">0. Hardware & Peripherie</div>
+            </div>
+        </div>
+
+        <div class="card card-principles">
+            <h2><span class="icon">🚫</span> Coding-Prinzipien (Non-Blocking)</h2>
+            <p>Geforderte Richtlinien für zeitkritische Embedded C++-Anwendungen:</p>
+
+            <ul>
+                <li>**Non-Blocking I/O:** Verzicht auf <code>delay()</code>, um die Reaktionsfähigkeit zu garantieren.</li>
+                <li>**FSM-Steuerung:** High-Level-Steuerung durch **Endliche Automaten** (FSM) in <code>main.cpp</code>.</li>
+                <li>**Starke Typisierung:** Nutzung von <code>enum class</code>, um Typ-Sicherheit zu erhöhen.</li>
+                <li>**Ressourcenmanagement:** <code>constexpr</code> für alle Konstanten, um RAM zur Laufzeit zu sparen.</li>
+            </ul>
+
+            <h3>Zeitsteuerungsprinzip</h3>
+            <p>Die Zustandswechsel erfolgen über Polling der Systemzeit:</p>
+            <div class="math-block">
+                \[ t_{now} - t_{last} > \Delta t \]
+            </div>
+        </div>
+
+    </div>
+
+    <div class="section-grid">
+
+        <div class="card card-math">
+            <h2><span class="icon">📐</span> Kinematik & Formeln</h2>
+            <p>Die Logik-Schicht (`src/logic/`) ist für das Mapping von Geschwindigkeitsbefehlen auf Motor-PWM-Werte verantwortlich.</p>
+
+            <h3>Panzer-Wende (Pivot-Turn)</h3>
+            <p>Für eine Drehung auf der Stelle (Geschw. $v \in [0, 255]$) müssen die Motoren gegenläufig laufen:</p>
+            <div class="math-block">
+                \[ PWM_L = -v, \quad PWM_R = +v \]
+            </div>
+
+            <h3>Kurvenfahrt (Formel-Beispiel)</h3>
+            <p>Berechnung der Geschwindigkeit $v_{in}$ des kurveninneren Rades, basierend auf dem Lenk-Faktor $r \in [0.0, 1.0]$:</p>
+            <div class="math-block">
+                \[ v_{in} = v \cdot (1.0 - r) \]
+            </div>
+        </div>
+
+        <div class="card card-principles">
+            <h2><span class="icon">🔗</span> Wichtige Build-Flags</h2>
+            <p>Spezifische Compiler-Einstellungen zur Sicherstellung der Code-Qualität:</p>
+
+            <ul>
+                <li>**Arduino Uno:** <code>-std=gnu++17</code></li>
+                <li>**ESP32-S3:** <code>-std=gnu++2a</code> (C++20 Support)</li>
+                <li>**Fehlerkontrolle:** <code>-Wall -Wextra -Werror=return-type</code> (Warnungen als Fehler behandeln, um sauberen Code zu erzwingen).</li>
+            </ul>
+
+            <p class="mt-3">Die Plattform-Abhängigkeit wird über <code>platformio.ini</code> gesteuert, das in **zwei getrennte Environments** unterteilt ist.</p>
+        </div>
+
+    </div>
+
+    <footer>
+        <p style="text-align: center; font-size: 0.8em; color: var(--color-secondary); margin-top: 20px;">
+            Dokumentation basierend auf der Projektstruktur GalaxyRVR Profi.
+        </p>
+    </footer>
+
+</div>
+
+<script>
+    // --- Interaktiver Skript-Platzhalter ---
+    // Dies kann erweitert werden, um:
+    // 1. Tooltips für jeden Layer anzuzeigen (Derzeit nur über 'title').
+    // 2. Beim Klick auf einen Layer, die zugehörige Datei-Struktur anzuzeigen (z.B. src/hal/).
+</script>
+
+</body>
+</html>
