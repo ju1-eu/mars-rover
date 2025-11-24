@@ -9,8 +9,8 @@
  * @date       2025-11-22
  */
 
-#include "Motion.h"
-#include "../hal/Motor.h" // Direkte Abhängigkeit zum Hardware-Treiber
+#include "logic/Motion.h" // High-Level Bewegungslogik (Differential Drive)
+#include "hal/Motor.h"    // Direkte Abhängigkeit zum Hardware-Treiber
 
 namespace Logic::Motion {
 

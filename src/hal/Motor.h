@@ -8,6 +8,7 @@
 
 #pragma once
 #include <Arduino.h>
+#include <stdint.h>
 
 namespace HAL::Motor {
 

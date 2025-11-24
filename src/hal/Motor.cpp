@@ -118,24 +118,21 @@ void stop() { setSpeed(0, 0); }
  * Wird zyklisch aus main.cpp (Phase MOTOR_TEST) aufgerufen.
  * Die Zeitsteuerung nutzt millis(), kein delay().
  *
- * Testgeschwindigkeit:
- *   Cruise-Speed im Bereich ca. 30–60 % von SpeedMax.
- *   Hier fest auf ~20 % gesetzt (CRUISE_TEST_FACTOR), um Akku und Getriebe
- *   zu schonen, aber eine klar sichtbare Bewegung zu behalten.
+ * Logging:
+ *   Es wird nur beim Wechsel des Testschritts eine Logzeile ausgegeben,
+ *   um die serielle Ausgabe nicht zu fluten.
  */
 void motorTestLogic() {
     static unsigned long lastStepChange = 0;
-    static uint8_t step = 0; // 0..4
+    static uint8_t step = 0;       // aktueller Testschritt 0..4
+    static uint8_t lastStep = 255; // zuletzt geloggter Schritt (255 = ungültig)
 
     unsigned long now = millis();
 
     // Erste Initialisierung: sofort Schritt 0 ausführen
     if (lastStepChange == 0) {
         lastStepChange = now;
-    } else if (now - lastStepChange < 1000UL) {
-        // Noch innerhalb der aktuellen 1-Sekunden-Phase: nichts ändern
-        return;
-    } else {
+    } else if (now - lastStepChange >= 1000UL) {
         // Nächste 1-Sekunden-Phase
         lastStepChange = now;
         if (step < 4) {
@@ -143,35 +140,41 @@ void motorTestLogic() {
         }
     }
 
-    // Cruise-Testgeschwindigkeit: ~20 % von SpeedMax (innerhalb 30–60 %-Band)
+    // Nur bei geändertem Schritt loggen und Motoren neu setzen
+    if (step == lastStep) {
+        return; // kein Zustandswechsel -> nichts zu tun
+    }
+    lastStep = step;
+
+    // Cruise-Testgeschwindigkeit: ~20 % von SpeedMax (bewusst konservativ)
     const int TEST_SPEED =
         static_cast<int>(Config::SpeedMax * CRUISE_TEST_FACTOR);
 
     switch (step) {
     case 0:
-        Serial.println(F("Motor-Test: Vorwaerts (~20% PWM Cruise)"));
+        Serial.println(F("Motor-Test (Logic): Vorwaerts (~20% PWM Cruise)"));
         setSpeed(TEST_SPEED, TEST_SPEED); // beide Motoren vorwärts
         break;
 
     case 1:
-        Serial.println(F("Motor-Test: Rueckwaerts (~20% PWM Cruise)"));
+        Serial.println(F("Motor-Test (Logic): Rueckwaerts (~20% PWM Cruise)"));
         setSpeed(-TEST_SPEED, -TEST_SPEED); // beide Motoren rückwärts
         break;
 
     case 2:
         Serial.println(
-            F("Motor-Test: Linksdrehung (auf der Stelle, ~20% PWM)"));
+            F("Motor-Test (Logic): Linksdrehung (auf der Stelle, ~20% PWM)"));
         setSpeed(-TEST_SPEED, TEST_SPEED); // links rückwärts, rechts vorwärts
         break;
 
     case 3:
         Serial.println(
-            F("Motor-Test: Rechtsdrehung (auf der Stelle, ~20% PWM)"));
+            F("Motor-Test (Logic): Rechtsdrehung (auf der Stelle, ~20% PWM)"));
         setSpeed(TEST_SPEED, -TEST_SPEED); // links vorwärts, rechts rückwärts
         break;
 
     default:
-        Serial.println(F("Motor-Test: Stop"));
+        Serial.println(F("Motor-Test (Logic): Stop"));
         stop(); // beide Motoren ausrollen lassen
         break;
     }
