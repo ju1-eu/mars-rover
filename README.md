@@ -61,6 +61,10 @@ $$
 
 - **Abhängigkeit:** Kennt nur die HAL-Schnittstellen, keine konkreten Pin-Nummern.
 
+* **DriveAssistant:** Ein P-Regler (Proportional), der die Gierrate (YawRate) des Gyroskops nutzt, um den Rover aktiv geradeaus zu halten.
+    * *Logik:* `Korrektur = Gierrate * P_Faktor`
+    * *Tuning:* Eine Totzone (Deadzone) filtert Sensorrauschen, um Oszillation ("Wackeln") zu vermeiden.
+
 ### Schicht 3: Anwendung (Application Layer)
 
 - **Verzeichnis:** `src/main.cpp`
@@ -70,6 +74,12 @@ $$
 $$
 t_\text{now} - t_\text{last} > \Delta t
 $$
+
+* **Autonomer Modus:**
+    1. **Cruise:** Der Rover fährt mit stabilisierter Geschwindigkeit (PWM 100).
+    2. **Obstacle Avoidance:** Erkennt der Ultraschall ein Hindernis (< 15 cm), stoppt der Rover.
+    3. **Smart Turn:** Führt eine überwachte 180°-Wende auf der Stelle aus (nutzt Gyro-Integration zur Winkelmessung).
+    4. **Safety:** Bei Kippgefahr (> 45° Neigung) wird sofort ein Not-Aus ausgelöst.
 
 ---
 

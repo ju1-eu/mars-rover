@@ -30,15 +30,23 @@
 
 ---
 
-Nächster Schritt: Der autonome "**Spurhalte-Assistent**"
-Wir nutzen den MPU6050 jetzt voll, um den Rover aktiv geradeaus fahren zu lassen. Wir bauen einen P-Regler (Proportional-Regler).
+**autonomen Rover**
 
+Rover fährt autonom, stabilisiert sich selbst (Gierrate ~0.0) und weicht Hindernissen mit einer präzisen 180°-Wende aus. Das ist ein voll funktionsfähiges Robotik-System.
 
+- [x] Single Source of Truth (SSOT)
+- [x] Hardware: Alle Sensoren (IMU, Ultraschall, IR, Batterie) kalibriert und entstört.
 
----
+- [x] Architektur: Eine professionelle HAL-Struktur (Hardware Abstraction Layer), die leicht erweiterbar ist.
 
+- [x] Logik: Ein intelligenter Spurhalte-Assistent (P-Regler) und eine Manöver-Logik (Wende).
 
-**Kamera**
-flashen
-dashboard
-kommunikation ESP32 - Uno
+- [ ] Die IR-Sensoren nutzen, um auch seitlichen Hindernissen auszuweichen (nicht nur Frontal-Crashs).
+
+- [ ] Die Kamera (ESP32-CAM) integrieren, um das Bild zu streamen.
+
+- [ ] Eine Fernsteuerung (Bluetooth/WLAN) bauen, bei der der Assistent trotzdem hilft ("Fly-By-Wire").
+
+- [ ] ESP32-CAM flashen
+- [ ] Dashboard
+- [ ] Kommunikation ESP32 - Uno verstehen
