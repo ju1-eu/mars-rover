@@ -35,6 +35,9 @@ constexpr float FILTER_ALPHA = 0.98f; // 98% Gyro, 2% Accel
 bool imuAvailable = false;
 bool imuCalibrated = false;
 
+// Für Ultraschall (persistenter Speicher)
+float g_lastDistanceCm = 999.0f;
+
 struct Vec3f {
     float x;
     float y;
@@ -84,44 +87,37 @@ void readImuRaw(int16_t &ax, int16_t &ay, int16_t &az, int16_t &gx, int16_t &gy,
     gz = (static_cast<int16_t>(buf[12]) << 8) | buf[13];
 }
 
-// --- In src/hal/Sensor.cpp (im namespace anonymous ganz oben) ersetzen ---
-
 bool imuInit() {
     Wire.begin();
     Wire.setClock(100000); // Sicherheits-Geschwindigkeit (100kHz)
-    // --- NEU: TIMEOUT HINZUFÜGEN ---
-    // Dies verhindert den "Freeze", wenn die Motoren stören.
-    // 3000 us = 3 ms Timeout, true = Reset des Busses bei Fehler
+
+    // --- NEU: TIMEOUT ---
     Wire.setWireTimeout(3000, true);
-    delay(100); // Kurz warten nach Power-Up
+    delay(100);
 
     // 1. Verbindung prüfen
     Wire.beginTransmission(MPU_ADDR);
-    if (Wire.endTransmission() != 0) {
-        return false; // Keine Antwort (ACK) vom Sensor
-    }
+    if (Wire.endTransmission() != 0)
+        return false;
 
-    // 2. HARD-RESET des Sensors (Register 0x6B, Bit 7 setzen)
-    // Das behebt "verwirrte" Zustände des Chips
+    // 2. HARD-RESET
     mpuWriteReg(REG_PWR_MGMT1, 0x80);
-    delay(100); // Warten bis Reset fertig
+    delay(100);
 
-    // 3. Aufwecken (Sleep-Modus beenden)
+    // 3. Aufwecken
     mpuWriteReg(REG_PWR_MGMT1, 0x00);
-    delay(100); // Warten bis Oszillator stabil
+    delay(100);
 
-    // 4. WHO_AM_I Check zur Bestätigung
+    // 4. WHO_AM_I Check
     Wire.beginTransmission(MPU_ADDR);
     Wire.write(REG_WHO_AM_I);
     if (Wire.endTransmission(false) != 0)
         return false;
     if (Wire.requestFrom(static_cast<int>(MPU_ADDR), 1) != 1)
         return false;
-
     if (Wire.read() != 0x68)
         return false;
 
-    // Alles sauber initialisiert
     imuCalibrated = false;
     g_pitch = 0.0f;
     g_roll = 0.0f;
@@ -139,8 +135,7 @@ namespace HAL::Sensor {
 void init() {
     pinMode(Pin::IR_Left, INPUT);
     pinMode(Pin::IR_Right, INPUT);
-    // Ultraschall Pins werden dynamisch gesetzt
-    // Batterie Pin ist Analog Input (automatisch)
+    // Ultraschall Pins werden dynamisch gesetzt in update()
 
     if (imuInit()) {
         imuAvailable = true;
@@ -152,16 +147,16 @@ void init() {
 }
 
 // ====================== ULTRASCHALL ======================
-void ultrasonicTest() {
+void ultrasonicUpdate() {
     static unsigned long lastMeasure = 0;
-    static float lastDistance = -1.0f;
-
     unsigned long now = millis();
-    // Messung nur alle 2000 ms
-    if (now - lastMeasure < 2000UL)
+
+    // Messung alle 100 ms (schnell genug für Bremsweg)
+    if (now - lastMeasure < 100UL)
         return;
     lastMeasure = now;
 
+    // 1. Trigger
     pinMode(Pin::Ultrasonic_Trig, OUTPUT);
     digitalWrite(Pin::Ultrasonic_Trig, LOW);
     delayMicroseconds(2);
@@ -169,25 +164,36 @@ void ultrasonicTest() {
     delayMicroseconds(10);
     digitalWrite(Pin::Ultrasonic_Trig, LOW);
 
+    // 2. Echo
     pinMode(Pin::Ultrasonic_Echo, INPUT);
     unsigned long duration =
         pulseIn(Pin::Ultrasonic_Echo, HIGH, 18000); // Max ~3m
 
-    if (duration == 0)
-        return; // Timeout
+    if (duration == 0) {
+        g_lastDistanceCm = 999.0f; // Kein Echo = weit weg
+        return;
+    }
 
     float distance = duration * 0.01715f; // Kalibrierter Wert
 
-    // Filterung unrealistischer Werte
-    if (distance < 2.0f || distance > 300.0f)
-        return;
+    // Plausibilitätsfilter
+    if (distance > 2.0f && distance < 400.0f) {
+        g_lastDistanceCm = distance;
+    }
+}
 
-    // Nur bei Änderung ausgeben
-    if (lastDistance < 0.0f || fabs(distance - lastDistance) > 1.0f) {
+float getUltrasonicDistance() { return g_lastDistanceCm; }
+
+// Veraltete Test-Funktion (kann für Diagnose bleiben)
+void ultrasonicTest() {
+    ultrasonicUpdate(); // Ruft die Logik auf
+    static float lastPrintDist = -1.0f;
+
+    if (fabs(g_lastDistanceCm - lastPrintDist) > 1.0f) {
         Serial.print(F("Ultrasonic: "));
-        Serial.print(distance);
+        Serial.print(g_lastDistanceCm);
         Serial.println(F(" cm"));
-        lastDistance = distance;
+        lastPrintDist = g_lastDistanceCm;
     }
 }
 
@@ -196,6 +202,7 @@ bool irLeftBlocked() { return digitalRead(Pin::IR_Left) == LOW; }
 bool irRightBlocked() { return digitalRead(Pin::IR_Right) == LOW; }
 
 void irTest() {
+    // ... (Code wie gehabt) ...
     static unsigned long lastPrint = 0;
     static bool lastLeft = false;
     static bool lastRight = false;
@@ -239,14 +246,9 @@ uint8_t getBatteryPercentage() {
         (u - BATTERY_MIN_V) / (BATTERY_MAX_V - BATTERY_MIN_V) * 100.0f + 0.5f);
 }
 
-bool isBatteryCharging() {
-    // Einfache Dummy-Implementierung oder deine Logik hier einfügen
-    return false;
-}
+bool isBatteryCharging() { return false; }
 
 // ====================== IMU (Kalibrierung & Logik) ======================
-
-// --- In src/hal/Sensor.cpp (namespace HAL::Sensor) ersetzen ---
 
 void imuCalibrate(uint16_t samples) {
     if (!imuAvailable)
@@ -267,13 +269,11 @@ void imuCalibrate(uint16_t samples) {
         sumGy += gy;
         sumGz += gz;
 
-        // VISUELLER FORTSCHRITT: Alle 50 Samples einen Punkt drucken
-        if (i % 50 == 0) {
+        if (i % 50 == 0)
             Serial.print(F("."));
-        }
-        delay(3); // Etwas mehr Zeit geben
+        delay(3);
     }
-    Serial.println(); // Neue Zeile nach den Punkten
+    Serial.println();
 
     g_accOffsetLSB.x = sumAx / samples;
     g_accOffsetLSB.y = sumAy / samples;
@@ -292,16 +292,14 @@ void imuUpdate() {
     if (!imuAvailable || !imuCalibrated)
         return;
 
-    // 1. Zeitberechnung (dt)
     unsigned long nowMicros = micros();
     float dt = (nowMicros - g_lastFilterMicros) / 1000000.0f;
     g_lastFilterMicros = nowMicros;
 
-    // 2. Rohdaten lesen
     int16_t ax_raw, ay_raw, az_raw, gx_raw, gy_raw, gz_raw;
     readImuRaw(ax_raw, ay_raw, az_raw, gx_raw, gy_raw, gz_raw);
 
-    // 3. Umrechnen (Sensor-Frame) & Offsets
+    // Umrechnen & Offsets
     float ax_g = (ax_raw - g_accOffsetLSB.x) / ACC_LSB_PER_G;
     float ay_g = (ay_raw - g_accOffsetLSB.y) / ACC_LSB_PER_G;
     float az_g = (az_raw - g_accOffsetLSB.z) / ACC_LSB_PER_G;
@@ -310,17 +308,16 @@ void imuUpdate() {
     float gy_dps = (gy_raw - g_gyroOffsetLSB.y) / GYRO_LSB_PER_DPS;
     float gz_dps = (gz_raw - g_gyroOffsetLSB.z) / GYRO_LSB_PER_DPS;
 
-    // 4. Transformation -> Rover-Frame (X=Vorne, Z=Oben invertiert)
-    g_lastAcc_g_rover.x = ax_g;  // Vorne
-    g_lastAcc_g_rover.y = ay_g;  // Links
-    g_lastAcc_g_rover.z = -az_g; // Oben (Invertiert)
+    // Transformation (Überkopf)
+    g_lastAcc_g_rover.x = ax_g;
+    g_lastAcc_g_rover.y = ay_g;
+    g_lastAcc_g_rover.z = -az_g;
 
-    g_lastGyro_dps_rover.x = gx_dps;  // Roll Rate
-    g_lastGyro_dps_rover.y = gy_dps;  // Pitch Rate
-    g_lastGyro_dps_rover.z = -gz_dps; // Yaw Rate (Invertiert)
+    g_lastGyro_dps_rover.x = gx_dps;
+    g_lastGyro_dps_rover.y = gy_dps;
+    g_lastGyro_dps_rover.z = -gz_dps;
 
-    // 5. Winkel berechnen (Accel-Basis)
-    // Pitch: Nase hoch = positiv (daher erstes Minus bei atan2)
+    // Winkel (Accel)
     float acc_pitch =
         -atan2f(-g_lastAcc_g_rover.x,
                 sqrtf(g_lastAcc_g_rover.y * g_lastAcc_g_rover.y +
@@ -329,24 +326,20 @@ void imuUpdate() {
     float acc_roll =
         atan2f(g_lastAcc_g_rover.y, g_lastAcc_g_rover.z) * 180.0f / PI;
 
-    // 6. Komplementärfilter
+    // Filter
     g_pitch = FILTER_ALPHA * (g_pitch + g_lastGyro_dps_rover.y * dt) +
               (1.0f - FILTER_ALPHA) * acc_pitch;
     g_roll = FILTER_ALPHA * (g_roll + g_lastGyro_dps_rover.x * dt) +
              (1.0f - FILTER_ALPHA) * acc_roll;
 }
 
-// Getter-Implementierungen
+// Getter
 float getPitch() { return g_pitch; }
 float getRoll() { return g_roll; }
 float getYawRate() { return g_lastGyro_dps_rover.z; }
 
-// Test-Ausgabe (nutzt jetzt Update + Print)
 void imuTest() {
-    // Im Diagnose-Modus rufen wir Update hier explizit auf, falls es im Loop
-    // fehlt
     imuUpdate();
-
     static unsigned long lastPrint = 0;
     if (millis() - lastPrint > 100) {
         lastPrint = millis();
@@ -356,19 +349,9 @@ void imuTest() {
         Serial.print(getRoll(), 1);
         Serial.print(F(" | Yaw: "));
         Serial.println(getYawRate(), 1);
-
         if (abs(getPitch()) > 45.0f)
             Serial.println(F("!!! KIPP-ALARM !!!"));
     }
-}
-
-// Veraltete Funktion als Wrapper behalten oder leer lassen, falls Header sie
-// verlangt
-void imuPrintAngles() {
-    Serial.print(F("Winkel: P="));
-    Serial.print(getPitch());
-    Serial.print(F(" R="));
-    Serial.println(getRoll());
 }
 
 } // namespace HAL::Sensor

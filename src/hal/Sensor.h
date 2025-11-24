@@ -13,15 +13,18 @@ namespace HAL::Sensor {
 // Basis-Initialisierung
 void init();
 
-// Ultraschall
-void ultrasonicTest();
+// ===== Ultraschall (HC-SR04) =====
+// Misst die Distanz (muss regelmäßig im loop gerufen werden)
+void ultrasonicUpdate();
+// Gibt die letzte gemessene Distanz in cm zurück
+float getUltrasonicDistance();
 
-// IR-Sensoren
+// ===== IR-Sensoren (Hindernis) =====
 bool irLeftBlocked();
 bool irRightBlocked();
 void irTest();
 
-// Batterie
+// ===== Batterie =====
 float getBatteryVoltage();
 uint8_t getBatteryPercentage();
 bool isBatteryCharging();

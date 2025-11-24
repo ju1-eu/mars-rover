@@ -1,267 +1,122 @@
 /**
- * Anwendungsschicht: Hardware-Diagnose (alle Komponenten)
- * Anpassung: Integriert IMU-Update für Filter und nutzt Getter-Methoden.
+ * @file    main.cpp
+ * @brief   Autonomer Modus: Geradeausfahrt + 180°-Wende bei Hindernis.
  */
 
 #include "Config.h"
 #include "hal/Actuator.h"
+#include "hal/Motor.h"
 #include "hal/Sensor.h"
-#include "logic/Motion.h"
+#include "logic/DriveAssistant.h"
 #include <Arduino.h>
 
-// Einfaches State-Enum für den Gesamttest-Ablauf
-enum class HardwareTestPhase {
-    INIT,
-    MOTOR_TEST,
-    SERVO_TEST,
-    RGB_TEST,
-    ULTRASONIC_TEST,
-    IR_TEST,
-    IMU_TEST,
-    FINISHED
-};
+// --- EINSTELLUNGEN ---
+constexpr uint8_t CRUISE_SPEED = 100; // 38 für Test/Tisch, 80-100 für Boden
+constexpr uint8_t TURN_SPEED = 80;    // Kraftvolles Drehen für die Wende
+constexpr float STOP_DISTANCE_CM = 15.0f;
 
-HardwareTestPhase currentPhase = HardwareTestPhase::INIT;
-unsigned long phaseStartTime = 0;
+// Hilfsfunktion: Führt eine überwachte 180-Grad-Wende durch
+void performTurn180() {
+    Serial.println(F("--- WENDE MANOEVER START (180 Grad) ---"));
+    HAL::Motor::stop();
+    delay(500);
 
-constexpr unsigned long PHASE_DURATION_MS = 5000UL;
-constexpr unsigned long BATTERY_LOG_INTERVAL_MS = 10000UL;
+    float currentAngle = 0.0f;
+    unsigned long lastTime = millis();
 
-// ----------------------------------------------------------------------------
-// Motor-Test Logik (Unverändert)
-// ----------------------------------------------------------------------------
-static void motorTestLogicViaMotion(unsigned long now) {
-    static unsigned long lastStepChange = 0;
-    static uint8_t step = 0;
-    static int8_t lastStepPrinted = -1;
+    // Drehung einleiten (Linksherum: Links Rückwärts, Rechts Vorwärts)
+    HAL::Motor::setSpeed(-TURN_SPEED, TURN_SPEED);
 
-    constexpr unsigned long STEP_INTERVAL_MS = 1000UL;
-    constexpr uint8_t MAX_STEP = 4;
+    // Schleife: Solange drehen, bis 180 Grad erreicht sind
+    while (abs(currentAngle) < 180.0f) {
+        // 1. Sensoren wach halten
+        HAL::Sensor::imuUpdate();
 
-    if (lastStepChange == 0) {
-        lastStepChange = now;
-        step = 0;
-    } else if (now - lastStepChange >= STEP_INTERVAL_MS && step < MAX_STEP) {
-        lastStepChange = now;
-        ++step;
-    }
+        // 2. Zeit-Delta berechnen
+        unsigned long now = millis();
+        float dt = (now - lastTime) / 1000.0f; // in Sekunden
+        lastTime = now;
 
-    const uint8_t TEST_SPEED = static_cast<uint8_t>(Config::SpeedMax * 0.20f);
+        // 3. Winkel integrieren (Rate * Zeit = Winkeländerung)
+        // getYawRate liefert °/s.
+        float rate = HAL::Sensor::getYawRate();
+        currentAngle += rate * dt;
 
-    if (step != lastStepPrinted) {
-        switch (step) {
-        case 0:
-            Serial.println(F("Motor: Vorwaerts"));
-            break;
-        case 1:
-            Serial.println(F("Motor: Rueckwaerts"));
-            break;
-        case 2:
-            Serial.println(F("Motor: Links"));
-            break;
-        case 3:
-            Serial.println(F("Motor: Rechts"));
-            break;
-        default:
-            Serial.println(F("Motor: Stop"));
-            break;
+        // Debug-Ausgabe alle 100ms
+        static unsigned long lastPrint = 0;
+        if (now - lastPrint > 100) {
+            lastPrint = now;
+            Serial.print(F("Wende: "));
+            Serial.print(abs(currentAngle), 0);
+            Serial.println(F(" / 180 Grad"));
         }
-        lastStepPrinted = static_cast<int8_t>(step);
+
+        // Not-Aus bei Kippen (Sicherheit)
+        if (abs(HAL::Sensor::getPitch()) > 60.0f) {
+            HAL::Motor::stop();
+            return;
+        }
     }
 
-    switch (step) {
-    case 0:
-        Logic::Motion::moveForward(TEST_SPEED);
-        break;
-    case 1:
-        Logic::Motion::moveBackward(TEST_SPEED);
-        break;
-    case 2:
-        Logic::Motion::turnLeft(TEST_SPEED);
-        break;
-    case 3:
-        Logic::Motion::turnRight(TEST_SPEED);
-        break;
-    default:
-        Logic::Motion::stopMove();
-        break;
-    }
+    HAL::Motor::stop();
+    Serial.println(F("--- WENDE ABGESCHLOSSEN ---"));
+    delay(1000); // Kurz orientieren vor Weiterfahrt
+
+    // Assistenten resetten, damit er nicht wegen des Drehens gegenlenkt
+    Logic::DriveAssistant::init();
 }
 
 void setup() {
     Serial.begin(115200);
-    Serial.println();
-    Serial.println(F("--- GALAXY RVR HARDWARE DIAGNOSE START ---"));
+    Serial.println(F("--- GALAXY RVR: AUTONOMER MODUS + WENDE ---"));
 
     HAL::Sensor::init();
-    Logic::Motion::init();
+    HAL::Motor::init();
     HAL::Actuator::init();
+    Logic::DriveAssistant::init();
 
-    // IMU-Kalibrierung (WICHTIG: Rover muss still stehen!)
-    Serial.println(
-        F("IMU: Kalibrierung (bitte warten, Rover nicht bewegen)..."));
+    Serial.println(F("IMU: Kalibrierung... (Stillhalten!)"));
+    HAL::Actuator::setCameraAngle(90);
     HAL::Sensor::imuCalibrate(50);
-    Serial.println(F("IMU: Kalibrierung fertig."));
+    Serial.println(F("IMU: Bereit."));
 
-    Serial.println(F("SET+START"));
-
-    phaseStartTime = millis();
+    Serial.println(F("START IN 3 SEKUNDEN..."));
+    delay(3000);
 }
 
 void loop() {
-    unsigned long now = millis();
-
-    // ========================================================================
-    // WICHTIG: IMU-Update muss IMMER laufen (für den Filter-Algorithmus)
-    // ========================================================================
+    // Sensoren immer aktualisieren
     HAL::Sensor::imuUpdate();
+    HAL::Sensor::ultrasonicUpdate();
 
-    // --- Periodisches Battery-Logging ---
-    static unsigned long lastBatteryLog = 0;
-    if (now - lastBatteryLog > BATTERY_LOG_INTERVAL_MS) {
-        lastBatteryLog = now;
-        Serial.print(F("[Battery] U="));
+    float distance = HAL::Sensor::getUltrasonicDistance();
+
+    // --- HINDERNIS-LOGIK ---
+    if (distance > 0.1f && distance < STOP_DISTANCE_CM) {
+        // Hindernis erkannt!
+        Serial.print(F("HINDERNIS BEI "));
+        Serial.print(distance, 0);
+        Serial.println(F(" cm -> START WENDE!"));
+
+        performTurn180(); // Blockierende Funktion, kehrt erst nach Wende zurück
+    } else {
+        // --- FREIE FAHRT ---
+        bool safe = Logic::DriveAssistant::update(CRUISE_SPEED);
+
+        if (!safe) {
+            HAL::Motor::stop();
+            Serial.println(F("NOT-AUS: Rover gekippt!"));
+            while (true)
+                delay(100);
+        }
+    }
+
+    // Batterie-Check alle 5s
+    static unsigned long lastBat = 0;
+    if (millis() - lastBat > 5000) {
+        lastBat = millis();
+        Serial.print(F("[Bat] "));
         Serial.print(HAL::Sensor::getBatteryVoltage());
-        Serial.print(F("V, SOC="));
-        Serial.print(HAL::Sensor::getBatteryPercentage());
-        Serial.println(F("%"));
-    }
-
-    // --- Zustandsautomat ---
-    switch (currentPhase) {
-    case HardwareTestPhase::INIT:
-        Serial.println(F("Starte Motor-Test..."));
-        phaseStartTime = now;
-        currentPhase = HardwareTestPhase::MOTOR_TEST;
-        break;
-
-    case HardwareTestPhase::MOTOR_TEST:
-        motorTestLogicViaMotion(now);
-        if (now - phaseStartTime > PHASE_DURATION_MS) {
-            Logic::Motion::stopMove();
-            Serial.println(F("Starte Servo-Test..."));
-            phaseStartTime = now;
-            currentPhase = HardwareTestPhase::SERVO_TEST;
-        }
-        break;
-
-    case HardwareTestPhase::SERVO_TEST:
-        HAL::Actuator::servoTest();
-        if (now - phaseStartTime > PHASE_DURATION_MS) {
-            Serial.println(F("Starte RGB-Test..."));
-            phaseStartTime = now;
-            currentPhase = HardwareTestPhase::RGB_TEST;
-        }
-        break;
-
-    case HardwareTestPhase::RGB_TEST:
-        HAL::Actuator::rgbTest();
-        if (now - phaseStartTime > PHASE_DURATION_MS) {
-            Serial.println(F("Starte Ultraschall-Test..."));
-            phaseStartTime = now;
-            currentPhase = HardwareTestPhase::ULTRASONIC_TEST;
-        }
-        break;
-
-    case HardwareTestPhase::ULTRASONIC_TEST:
-        HAL::Sensor::ultrasonicTest();
-        if (now - phaseStartTime > PHASE_DURATION_MS) {
-            Serial.println(F("Starte IR-Test..."));
-            phaseStartTime = now;
-            currentPhase = HardwareTestPhase::IR_TEST;
-        }
-        break;
-
-    case HardwareTestPhase::IR_TEST:
-        HAL::Sensor::irTest();
-        if (now - phaseStartTime > PHASE_DURATION_MS) {
-            Serial.println(F("Starte IMU-Diagnose (Kippen Sie den Rover)..."));
-            phaseStartTime = now;
-            currentPhase = HardwareTestPhase::IMU_TEST;
-        }
-        break;
-
-    case HardwareTestPhase::IMU_TEST: {
-        static unsigned long lastPrint = 0;
-
-        // Anzeige nur alle 200ms aktualisieren (lesbarer)
-        if (now - lastPrint > 200) {
-            lastPrint = now;
-
-            float p = HAL::Sensor::getPitch();   // Neigung (Nase hoch/runter)
-            float r = HAL::Sensor::getRoll();    // Wanken (Seitlich kippen)
-            float y = HAL::Sensor::getYawRate(); // Drehung (Gieren)
-
-            // "Totzone": Werte unter 2.0 werden als 0 betrachtet (Ruhige
-            // Anzeige)
-            bool isFlat = abs(p) < 2.0f;
-            bool isLevel = abs(r) < 2.0f;
-            bool isStill = abs(y) < 2.0f;
-
-            // --- 1. PITCH (Nase) ---
-            Serial.print(F("Lage: "));
-            if (isFlat)
-                Serial.print(F("FLACH   "));
-            else if (p > 0)
-                Serial.print(F("BERGAUF ")); // Nase hoch
-            else
-                Serial.print(F("BERGAB  ")); // Nase runter
-
-            Serial.print(F("("));
-            Serial.print(p, 1);
-            Serial.print(F("°)"));
-
-            // --- 2. ROLL (Seite) ---
-            Serial.print(F(" | Kippt: "));
-            if (isLevel)
-                Serial.print(F("GERADE "));
-            else if (r > 0)
-                Serial.print(F("LINKS  "));
-            else
-                Serial.print(F("RECHTS "));
-
-            Serial.print(F("("));
-            Serial.print(r, 1);
-            Serial.print(F("°)"));
-
-            // --- 3. YAW (Lenkung) ---
-            Serial.print(F(" | Gier: "));
-            if (isStill)
-                Serial.print(F("STOP   "));
-            else if (y > 0)
-                Serial.print(F("LINKS  ")); // Positiv = Linksdrehung
-            else
-                Serial.print(F("RECHTS "));
-
-            Serial.print(F("("));
-            Serial.print(y, 1);
-            Serial.println(F("°/s)"));
-
-            // --- SICHERHEITS-ALARM (Grenzwert-Überwachung) ---
-            // Visualisierung für den späteren Not-Aus
-            if (abs(p) > 45.0f || abs(r) > 45.0f) {
-                Serial.println(
-                    F(">>> ALARM: KIPP-GRENZE UEBERSCHRITTEN (NOT-AUS) <<<"));
-            }
-        }
-
-        // Testdauer prüfen (5 Sekunden)
-        if (now - phaseStartTime > PHASE_DURATION_MS) {
-            Serial.println(F("Test abgeschlossen."));
-            phaseStartTime = now;
-            currentPhase = HardwareTestPhase::FINISHED;
-        }
-        break;
-    }
-
-    case HardwareTestPhase::FINISHED: {
-        static bool finishedLogged = false;
-        if (!finishedLogged) {
-            Logic::Motion::stopMove();
-            Serial.println(F("--- HARDWARE DIAGNOSE ENDE ---"));
-            finishedLogged = true;
-        }
-        break;
-    }
+        Serial.println(F(" V"));
     }
 }
