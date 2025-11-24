@@ -6,8 +6,8 @@ bearbeitet am 2025-11-22
 
 Paraphrase (in eigenen Worten)
 
-Erstelle **Cornell-Notizen**
-**Stil**: klare, präzise und prägnante Kommunikation
+Erstelle **Cornell-Notizen** (tabellenform)
+**Stil**: klare, präzise und prägnante Kommunikation, neutral
 **Prüfe**: vollständig, fachlich korrekt (Fachperson) und verständlich (Laie)?
 NUR! Originaltext: als **Primärquelle** verwenden
 
@@ -40,18 +40,55 @@ Prinzip der klaren, präzisen und prägnanten Kommunikation
 **Bearbeitungs-Checkliste nach Playlist**
 
 
-Erstelle **Entwicklerdokumentation**
+Erstelle **Entwicklerdokumentation** (README)
+
+
 **Checkliste** mit Aufgaben (To-Do-Liste)
+
+**Kanban-Board** in Listenform
+status: "todo"  # oder: doing / review / done / blocked
+kanban.board: "Projekt"
+
+**Roadmap** (nächste Schritte)
+
+strukturierter Überblick über den aktuellen Stand meines Projekts
+
 
 Text in strukturierter Listenform
 
-Text auf Rechtschreibung und Grammatik überprüfen:
+Text in Tabellenform
 
-Schreiben im GFM (GitHub Flavored Markdown) Format, optimiert für Pandoc und unter Verwendung von LaTeX für mathematische Formeln.
+Rechtschreibung und Grammatik überprüfen:
 
-Erstelle Text in Latex ohne Präambel
+Formatiere Text in GFM (**GitHub Flavored Markdown**), optimiert für Pandoc und unter Verwendung von LaTeX für mathematische Formeln.
+
+Kernkonventionen:
+
+- GitHub-Flavored Markdown, kompatibel mit Pandoc (inkl. YAML-Frontmatter möglich).
+- Mathe konsequent in LaTeX:
+  - Inline: `$ ... $`
+  - Display: `$$ ... $$`
+- Einheiten mit `\,` zwischen Zahl und Einheit, z. B. `$15{,}6\,\mathrm{W}$`.
+- Tabellen als GFM-Tabellen, ohne exotische Features.
+- Codeblöcke mit Sprachangabe, z. B. ` ```cpp `, ` ```python `.
 
 
+**GFM-Markdown** Tabelle für mein Repo formatieren
+
+**Überblick** (Grundprinzip, Kenndaten, Pins, Betriebsmodi)
+Hardware:
+Ziel: später Programmieren
+
+Was ist STEAM? (Science, Technology, Engineering, Arts, Mathematics, MINT-Erweiterung)
+Brücke: STEAM-Projekt × GalaxyRVR (SunFounder: <https://docs.sunfounder.com/projects/galaxy-rvr/de/latest/>)
+Erstelle ein Konzept (Selbstlernprojekt, Grundstruktur in Phasen)
+Erstelle ein Briefing
+
+
+
+Formatiere Text in **Latex** ohne Präambel
+
+---
 
 - kompakte Liste zu allen **Keywords mit kurzen Erklärungen aller Fachbegriffe**, basierend auf dem Originaltext.
   Thema:
