@@ -1,7 +1,0 @@
-<map id="Logic::Motion::stopMove" name="Logic::Motion::stopMove">
-<area shape="rect" id="Node000001" title="Stoppt alle Motorbewegungen." alt="" coords="5,5,170,31"/>
-<area shape="rect" id="Node000002" href="$d3/d08/namespaceHAL_1_1Motor.html#a3e1e2d23d2acaaf52d14ffb3d14a0717" title="Wrapper für sofortigen Stopp." alt="" coords="218,5,339,31"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="170,16,202,16,202,21,170,21"/>
-<area shape="rect" id="Node000003" href="$d3/d08/namespaceHAL_1_1Motor.html#a68bec045616eaddd0c9acbc5d9fe2bfa" title="Setzt die Geschwindigkeit für den Differenzialantrieb." alt="" coords="387,5,538,31"/>
-<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="340,16,372,16,372,21,340,21"/>
-</map>

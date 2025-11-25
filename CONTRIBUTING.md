@@ -1,54 +1,150 @@
 # 🤝 Leitfaden für Code-Beiträge (CONTRIBUTING)
 
-Willkommen beim **GalaxyRVR Profi**-Projekt\! Wir freuen uns über Ihren Beitrag zur Verbesserung der Firmware. Um die Qualität und die strikte Einhaltung der Architekturstandards zu gewährleisten, bitten wir Sie, die folgenden Richtlinien zu beachten.
+Willkommen beim GalaxyRVR-Profi-Projekt!
 
-## 1\. Architektur-Regeln (Separation of Concerns)
+Dieses Projekt verfolgt einen hohen Standard in Bezug auf Software-Architektur und Dokumentationsqualität.
+Unsere Philosophie ist die **doppelte Legitimation**: Der Code muss technisch exzellent (effizient, sicher) sein und gleichzeitig seine Funktionsweise didaktisch klar vermitteln.
 
-Das Projekt nutzt eine **3-Schichten-Architektur**. Jeder Beitrag muss in die dafür vorgesehene Ebene integriert werden.
+Bitte lesen Sie diesen Leitfaden sorgfältig durch, bevor Sie einen Pull Request (PR) einreichen.
 
-| Schicht | Zweck des Codes | Verzeichnis | Verbotene Abhängigkeiten |
-| :--- | :--- | :--- | :--- |
-| **Anwendung (Application)** | High-Level-Verhalten, FSM-Logik, Startsequenz (`setup()`). | `src/main.cpp` | Direkter Zugriff auf Hardware-Pins oder Timer. |
-| **Logik & Verhalten (Logic)** | Kinematik-Berechnung, PID-Regler, Zustandsverwaltung (Was soll der Roboter tun?). | `src/logic/` | Zugriff auf `Pin::` oder `SoftPWM`. Kennt nur die HAL. |
-| **HAL (Hardware Abstraction Layer)** | Direkte Pin-Ansteuerung, ADC-Lesen, Timer-Steuerung. | `src/hal/` | Logik über die reine Hardware-Bedienung hinaus (z.B. Umrechnung von Encoder-Ticks in m/s). |
+---
 
------
+## 1. Architektur-Regeln (Separation of Concerns)
 
-## 2\. Coding Guidelines (Qualitätssicherung)
+Das Projekt nutzt eine strikte **3-Schichten-Architektur**.
+Jeder Beitrag muss eindeutig einer dieser Ebenen zugeordnet werden.
+Verletzungen der Abhängigkeitsrichtung führen zur Ablehnung des PRs.
 
-Alle Beiträge müssen die etablierten **Embedded C++**-Standards des Projekts erfüllen:
+### 1.1 Schichtenübersicht
 
-### 2.1. C++ Syntax und Features
+| Schicht      | Verzeichnis     | Zweck & Verantwortung                              | Erlaubte Abhängigkeiten      |
+|--------------|-----------------|----------------------------------------------------|------------------------------|
+| 1. Application | `src/main.cpp` | Was passiert wann? (FSM, Setup, Not-Aus).          | Kennt Logic & HAL.           |
+| 2. Logic     | `src/logic/`    | Wie wird geregelt? (PID, Kinematik, Filter).       | Kennt nur HAL. Keine direkten Hardware-Pins. |
+| 3. HAL       | `src/hal/`      | Womit wird gearbeitet? (Treiber, Register, I²C).   | Kennt niemanden über sich. Keine Logic-Header einbinden. |
 
-  * **Compiler-Standards:** Halten Sie die Build-Flags (`platformio.ini`) ein: C++17 für AVR (`uno`), C++20 für ESP32S3.
-  * **Typisierung:** Verwenden Sie **`enum class`** für alle Zustände, um Typkonflikte zu vermeiden.
-  * **Ressourcenmanagement:** Nutzen Sie **`constexpr`** für alle systemweiten Konstanten (`Config.h`), um den RAM-Verbrauch zur Laufzeit zu minimieren.
-  * **STL:** Die Standard Template Library (`std::vector`, etc.) ist nur für die Umgebung **`env:xiao_esp32s3`** zulässig.
+### 1.2 Goldene Regel der Abhängigkeit
 
-### 2.2. Non-Blocking I/O
+Code darf nur Module importieren (`#include`), die **architektonisch unter ihm** stehen:
 
-  * **Verbot von `delay()`:** Die Funktion `delay()` ist in der gesamten Laufzeitlogik (`loop()`) strengstens untersagt, da sie das System blockiert.
-  * **Zeitsteuerung:** Alle zeitkritischen Aufgaben müssen über **Polling der Systemzeit** (`millis()`) gesteuert werden:
-    $$\text{Aktion ausführen, WENN } t_{now} - t_{last} > \Delta t$$
+```text
+Application → Logic → HAL
+```
 
-### 2.3. Kommentierung und Dokumentation
+---
 
-  * **Doxygen:** Alle öffentlichen Funktionen (`.h`-Dateien) und komplexen Logikblöcke (`.cpp`-Dateien) müssen im **Doxygen-Stil** kommentiert werden (mit `@brief`, `@param`, `@return`).
-  * **Klarheit:** Kommentare müssen das **"Warum"** erklären (Intention, Nebenbedingungen), nicht das "Was" (tautologische Code-Beschreibung).
-  * **Sprache:** Interne Kommentare sind in Deutsch zulässig, Doxygen-Header-Dateien sollten jedoch idealerweise in Englisch verfasst werden, um die internationale Wartbarkeit zu gewährleisten.
+## 2. Coding Guidelines
 
------
+Wir schreiben Embedded-C++, das deterministisch und ressourcenschonend ist.
 
-## 3\. Workflow für Beiträge (Pull Requests)
+### 2.1 C++-Standards & Typisierung
 
-Folgen Sie diesen Schritten, um Ihren Beitrag zur Prüfung einzureichen:
+* **Versionierung:**
 
-1.  **Issue erstellen:** Melden Sie den Fehler, den Sie beheben, oder das Feature, das Sie hinzufügen möchten, in einem [Issue-Ticket](https://www.google.com/search?q=).
-2.  **Branch erstellen:** Erstellen Sie einen Feature-Branch von der Hauptentwicklungslinie (`develop` oder `main`):
-    `git checkout -b feature/Ihr-Feature-Name`
-3.  **Code-Änderungen:** Implementieren Sie die Änderungen und stellen Sie sicher, dass alle Kommentierungs- und Architekturregeln eingehalten werden.
-4.  **Testen:** Führen Sie einen lokalen Build für **beide Umgebungen** aus, um Kompatibilität zu gewährleisten:
-    `platformio run`
-5.  **Pull Request (PR):** Erstellen Sie einen Pull Request und verlinken Sie ihn mit dem ursprünglichen Issue-Ticket. Beschreiben Sie kurz, welche Probleme gelöst wurden und welche Auswirkungen die Änderungen auf die RAM/Flash-Nutzung haben.
+  * AVR (Uno): C++17
 
-**Wichtig:** Pull Requests ohne korrekte architektonische Zuordnung oder funktionierenden Build für beide Environments werden abgelehnt.
+    * Keine STL, kein `std::vector`, kein `new`/`delete` zur Laufzeit.
+  * ESP32 (XIAO): C++20
+
+    * STL erlaubt, `std::vector` erlaubt.
+
+* **Strenge Typen:**
+
+  * Nutzen Sie `enum class` für Zustände.
+  * Vermeiden Sie `#define`-Makros für Konstanten; nutzen Sie stattdessen `constexpr`.
+
+Beispiele:
+
+Schlecht:
+
+```cpp
+#define SPEED 100
+```
+
+Gut:
+
+```cpp
+constexpr std::uint8_t CRUISE_SPEED = 100;
+```
+
+### 2.2 Zeitverhalten (Non-Blocking I/O)
+
+Die Nutzung von `delay()` ist innerhalb der `loop()` und in Logik-Modulen **streng verboten**.
+Das System muss jederzeit reaktionsfähig bleiben (z. B. für Not-Aus).
+
+Zeitsteuerung erfolgt ausschließlich über Delta-Messung:
+
+$$
+t_{\text{now}} - t_{\text{last}} \ge \Delta t
+$$
+
+Richtiges Pattern:
+
+```cpp
+unsigned long now = millis();
+if (now - lastExecution >= INTERVAL_MS) {
+    lastExecution = now;
+    // ... Aktion ...
+}
+```
+
+### 2.3 Dokumentation (Doxygen)
+
+Code ohne Dokumentation existiert nicht.
+Wir nutzen Doxygen mit spezifischen Custom-Tags, um technische und sicherheitsrelevante Aspekte hervorzuheben.
+
+**Pflicht für alle Header-Files (`.h`):**
+
+* `@brief` – Kurze, prägnante Beschreibung.
+* `@details` – Erklärung der Algorithmen (gerne mit LaTeX-Formeln für Mathe).
+* `@param` / `@return` – Beschreibung der Ein- und Ausgabewerte.
+
+**Projekt-spezifische Tags (wichtig):**
+
+Nutzen Sie diese Tags, um Kontext zu schaffen:
+
+* `@safety` – Beschreibt Sicherheitsmechanismen
+  z. B. „Stoppt Motoren bei Verbindungsverlust“.
+* `@hardware` – Listet physische Abhängigkeiten
+  z. B. „Benötigt Timer1“.
+* `@unit` – Gibt die physikalische Einheit an
+  z. B. `m/s`, `PWM (0–255)`, `°/s`.
+
+---
+
+## 3. Workflow & Git
+
+### 3.1 Commit-Messages
+
+Wir folgen der **Conventional-Commits**-Konvention, um die Git-Historie lesbar zu halten:
+
+* `feat(scope): ...`
+  für neue Funktionen
+  z. B. `feat(hal): add support for QMC6310 compass`
+* `fix(scope): ...`
+  für Fehlerbehebungen
+  z. B. `fix(logic): correct PID windup`
+* `docs: ...`
+  für reine Dokumentationsänderungen
+* `refactor: ...`
+  für Code-Umbau ohne Funktionsänderung
+
+### 3.2 Pull-Request-Checkliste
+
+Bevor Sie einen PR öffnen, prüfen Sie:
+
+* [ ] **Build:** Kompiliert der Code fehlerfrei für beide Environments?
+
+  ```bash
+  platformio run -e uno -e xiao_esp32s3
+  ```
+
+* [ ] **Architektur:** Wurde die Schichtentrennung eingehalten?
+
+* [ ] **Doku:** Haben neue Funktionen entsprechende Doxygen-Kommentare inkl. `@safety` / `@unit`-Tags?
+
+* [ ] **Format:** Wurde der Code formatiert (Clang-Format / CppStyle)?
+
+---
+
+Vielen Dank, dass Sie dazu beitragen, den GalaxyRVR besser zu machen! 🚀

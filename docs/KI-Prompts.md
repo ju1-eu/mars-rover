@@ -13,8 +13,12 @@ NUR! Originaltext: als **Primärquelle** verwenden
 
 Übersetze den Original-Code (von SunFounder) in unsere Profi-Architektur.
 
-**Kommentierung** für die professionellen Entwicklung
+**Kommentar** für die professionellen Entwicklung
 Code mit Doxygen-kompatiblen Kommentaren
+Der Stil verbindet technische Tiefe mit didaktischer Klarheit, indem er Markdown-Strukturierung, mathematische Formeln (LaTeX) und semantische Custom-Tags wie @safety oder @hardware nutzt.
+Dadurch dokumentiert der Code nicht nur die reine Implementierung (Wie), sondern erklärt auch die physikalischen Hintergründe und Sicherheitsaspekte (Warum), was die Software selbsterklärend und hochgradig wartbar macht.
+
+`doxygen (docs/doxygen/index.html)`
 
 Konvention 2025
 Best Practices

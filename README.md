@@ -1,7 +1,7 @@
 ---
 title: "GalaxyRVR Profi – Firmware-Dokumentation"
 file: "README.md"
-version: "v0.2.0"
+version: "1.1.0"
 author: "Jan Unger"
 status: "active"
 kanban.board: "Mars Rover"
@@ -9,197 +9,199 @@ kanban.board: "Mars Rover"
 
 # GalaxyRVR Profi – Firmware-Dokumentation
 
-[GalaxyRVR - SunFounder Mars Rover Kit](https://docs.sunfounder.com/projects/galaxy-rvr/de/latest/index.html)
+Diese Dokumentation beschreibt die professionelle Firmware-Architektur für den SunFounder Galaxy RVR.
+Das Projekt dient als Referenzimplementierung für Embedded-C++-Entwicklung, mit Fokus auf Modularität, Wartbarkeit und deterministisches Zeitverhalten.
 
-Quellcode download: <https://github.com/sunfounder/galaxy-rvr>
+## Links
 
-Dokumentation <https://github.com/sunfounder/galaxy-rvr/blob/docs-de/docs/source/index.rst>
+- [SunFounder Galaxy RVR Kit](#)
+- [API-Dokumentation (Doxygen)](#)
+- [Projekt-Board & Roadmap](#)
 
-Arduino Language Reference <https://www.arduino.cc/reference/en/>
+---
 
-## 1. Projektübersicht
+## 1. Projektphilosophie & Zielsetzung
 
-Dies ist eine professionell strukturierte Firmware-Entwicklungsumgebung für zwei parallele Plattformen. Das Projekt verzichtet auf monolithischen „Spaghetti-Code“ und implementiert stattdessen eine **Schichten-Architektur (Layered Architecture)**, moderne C++-Standards und **Non-Blocking I/O**.
+Herkömmliche Maker-Projekte leiden häufig unter monolithischem „Spaghetti-Code“, der Hardwarezugriffe, Logik und Timing vermischt. Dieses Projekt verfolgt einen industriellen Ansatz:
+
+- **Schichten-Architektur (Layered Architecture):**
+  Strikte Trennung von Hardware-Treibern (HAL) und Verhaltenslogik.
+
+- **Deterministisches Timing:**
+  Verzicht auf blockierende `delay()`-Aufrufe zugunsten von nicht-blockierenden Zustandsautomaten (Finite State Machines).
+
+- **Doppelte Legitimation:**
+  Der Code ist so geschrieben, dass er fachlich präzise (für Experten) und gleichzeitig didaktisch transparent (für Lernende) ist.
 
 ### Ziel-Plattformen
 
-1. **SunFounder Galaxy RVR**
-   - **Hardware:** Arduino Uno R3 (ATmega328P) + Galaxy RVR Shield
-   - **Sensorik:** Ultraschall, IR, IMU (MPU6050 via I2C)
-   - **Standard:** C++17 (via `-std=gnu++17`)
+Der Code ist plattformunabhängig konzipiert und unterstützt zwei Targets:
 
-2. **Seeed Studio XIAO ESP32S3**
-   - **Hardware:** ESP32-S3 (Dual-Core Xtensa LX7)
-   - **Fokus:** Experimentierplattform für High-Level-C++-Features
-   - **Standard:** C++20 (via `-std=gnu++2a`)
+- **Production:** Arduino Uno R3 (ATmega328P) – Ressourcenoptimiert.
+- **Experimental:** Seeed Studio XIAO ESP32S3 – Performance & modernes C++20.
 
 ---
 
 ## 2. Architektur-Konzept
 
-Das System folgt dem Prinzip der **Separation of Concerns**. Die Firmware ist in drei horizontale Schichten unterteilt.
+Das System folgt dem Prinzip der **Separation of Concerns**.
+Abhängigkeiten verlaufen ausschließlich von oben nach unten
+(„High-Level modules should not depend on low-level modules“ – Dependency Inversion Principle).
 
 ### Schicht 1: HAL (Hardware Abstraction Layer)
 
 - **Verzeichnis:** `src/hal/`
-- **Aufgabe:** Physischer Zugriff auf die Hardware (Pins, PWM-Register, ADC, I2C-Bus).
-- **Besonderheit:** Integriert Sensor-Fusion (Komplementärfilter) für die IMU direkt im Treiber, um stabile Winkel (Pitch/Roll) bereitzustellen.
-- **Schnittstelle:** Stellt abstrakte Methoden wie `setSpeed(int left, int right)` oder `getPitch()` bereit.
+- **Verantwortung:** Kapselung der physischen Hardware.
+- **Details:**
+  - Abstraktion von Registerzugriffen, I²C-Kommunikation und PWM-Erzeugung.
+  - Beispiel: `HAL::Motor::setSpeed(int speed)` steuert die Motoren an – unabhängig davon, ob dahinter eine H-Brücke per PWM oder ein Bus-System liegt.
+  - **Sensor-Fusion:** Rohdaten der IMU (Gyroskop/Accelerometer) werden hier vorverarbeitet (z. B. Komplementärfilter), um stabile Lagewinkel bereitzustellen.
 
 ### Schicht 2: Logik & Verhalten (Logic Layer)
 
 - **Verzeichnis:** `src/logic/`
-- **Aufgabe:** Berechnung von Bewegungsvektoren und Regelkreisen (z.B. DriveAssistant).
-- **Mathematik:** Hier werden abstrakte Befehle in konkrete Motorwerte umgerechnet.
+- **Verantwortung:** Reine Algorithmen und Regelungstechnik (plattform-agnostisch).
+- **Details:**
+  - Übersetzung von abstrakten Wünschen („Fahre Kurve“) in konkrete Aktorwerte.
+  - **Differential-Drive-Kinematik:**
+    Berechnung der Raddrehzahlen basierend auf Soll-Geschwindigkeit \(v\) und Kurvenradius \(r\):
 
-*Beispiel Kurvenfahrt:*
-Bei einer Geschwindigkeit $v \in [0, 255]$ und einem Kurvenverhältnis $r \in [0.0, 1.0]$ berechnet sich die Geschwindigkeit des kurveninneren Rades $v_\text{in}$ wie folgt:
+    $$v_{\text{in}} = v \cdot (1.0 - r)$$
 
-$$
-v_\text{in} = v \cdot (1.0 - r)
-$$
-
-- **Abhängigkeit:** Kennt nur die HAL-Schnittstellen, keine konkreten Pin-Nummern.
-
-* **DriveAssistant:** Ein P-Regler (Proportional), der die Gierrate (YawRate) des Gyroskops nutzt, um den Rover aktiv geradeaus zu halten.
-    * *Logik:* `Korrektur = Gierrate * P_Faktor`
-    * *Tuning:* Eine Totzone (Deadzone) filtert Sensorrauschen, um Oszillation ("Wackeln") zu vermeiden.
+  - **DriveAssistant:**
+    PID-Regler, der die Gierrate (Yaw-Rate) nutzt, um den Rover aktiv auf Kurs zu halten.
 
 ### Schicht 3: Anwendung (Application Layer)
 
 - **Verzeichnis:** `src/main.cpp`
-- **Aufgabe:** High-Level-Steuerung durch einen **Endlichen Automaten (Finite State Machine, FSM)**.
-- **Timing:** Nutzt `millis()` für nicht-blockierende Zeitsteuerung nach dem Schema:
-
-$$
-t_\text{now} - t_\text{last} > \Delta t
-$$
-
-* **Autonomer Modus:**
-    1. **Cruise:** Der Rover fährt mit stabilisierter Geschwindigkeit (PWM 100).
-    2. **Obstacle Avoidance:** Erkennt der Ultraschall ein Hindernis (< 15 cm), stoppt der Rover.
-    3. **Smart Turn:** Führt eine überwachte 180°-Wende auf der Stelle aus (nutzt Gyro-Integration zur Winkelmessung).
-    4. **Safety:** Bei Kippgefahr (> 45° Neigung) wird sofort ein Not-Aus ausgelöst.
+- **Verantwortung:** High-Level-Steuerung und Zustandsmanagement.
+- **Details:**
+  - Implementiert die Business-Logik als endlichen Automaten (FSM).
+  - Verwaltet Modi wie:
+    - Hardware-Diagnose
+    - Autonomes Fahren
+    - Fernsteuerung
+  - Stellt sicher, dass Sicherheitschecks (z. B. Not-Aus bei Kippen) zyklisch durchlaufen werden.
 
 ---
 
 ## 3. Ordnerstruktur
 
-Die Struktur ist für **PlatformIO** optimiert und trennt öffentliche Schnittstellen (`include`), Implementierungen (`src`), Dokumentation (`docs`) und Tests (`test`).
+Die Struktur ist für PlatformIO optimiert und trennt Interface (`include`) strikt von Implementation (`src`).
 
 ```text
 GalaxyRVR_Profi/
-├── docs/
-│   ├── archive/            # Alter Code (z. B. Lektion04_MotorTest.cpp)
-│   ├── datasheets/         # Hardware-Datenblätter & Schaltpläne
-│   ├── doxygen/            # Generierte API-Dokumentation (HTML)
-│   └── learning_notes/     # Lern-Notizen & Konzepte (.md)
-├── include/                # Globale Header (Konfiguration & Schnittstellen)
-│   ├── Config.h            # Systemweite Konstanten (constexpr)
-│   ├── Motion.h            # Schnittstelle für Bewegungslogik
-│   └── Pins.h              # Pin-Mapping für den Galaxy RVR
-├── src/                    # Quellcode
-│   ├── hal/                # Hardware-Treiber (Motor, Sensor, Actuator)
-│   ├── logic/              # Plattformunabhängige Algorithmen
-│   └── main.cpp            # Einstiegspunkt & State Machine (FSM)
-├── test/                   # Experimenteller Code / Unit-Tests
-├── platformio.ini          # Build-Konfiguration & Environments
-├── README.md               # Diese Dokumentation
-└── LICENSE.md              # Lizenz (z. B. MIT)
+├── docs/                   # Dokumentation
+│   ├── datasheets/         # Hardware-Spezifikationen
+│   ├── doxygen/            # Generierte HTML-API-Doku
+│   └── learning_notes/     # Fachliche Konzepte & Notizen
+├── include/                # Öffentliche Schnittstellen (Header)
+│   ├── Config.h            # Zentrale Systemkonfiguration (constexpr)
+│   ├── Pins.h              # Hardware-Mapping
+│   ├── hal/                # Treiber-Interfaces
+│   └── logic/              # Logik-Interfaces
+├── src/                    # Implementierung (.cpp)
+│   ├── hal/                # Hardware-Spezifika (Treiber)
+│   ├── logic/              # Algorithmen
+│   └── main.cpp            # Einstiegspunkt & State Machine
+├── test/                   # Unit-Tests & Diagnose-Sketches
+└── platformio.ini          # Build-Umgebungen
 ````
 
------
+---
 
-## 4\. Konfiguration & Hardware (Galaxy RVR)
+## 4. Hardware-Konfiguration (Mapping)
 
-### Pin-Mapping
+Die Pin-Belegung ist zentral in `include/Pins.h` definiert.
+„Magische Zahlen“ im Code werden vermieden.
+Aufgrund der Timer-Limitierungen des ATmega328P wird eine Hybrid-Lösung aus Hardware- und Software-PWM genutzt.
 
-Das Pinning ist in `include/Pins.h` als `constexpr` definiert. Aufgrund der Hardware-Limitierung des ATmega328P (nur 6 Hardware-PWM-Kanäle) wird für bestimmte Pins eine Software-PWM-Lösung benötigt.
+| Aktor / Sensor | Arduino-Pin | Signal-Typ       | Anmerkung                          |
+| -------------- | ----------: | ---------------- | ---------------------------------- |
+| Motor links    |        2, 3 | SoftPWM / HW-PWM | Pin 2 ist Richtung/PWM via SoftPWM |
+| Motor rechts   |        4, 5 | SoftPWM / HW-PWM | Pin 4 ist Richtung/PWM via SoftPWM |
+| IMU (MPU6050)  |       A4,A5 | I²C              | Standard `Wire`-Library            |
+| Ultraschall    |        7, 8 | Digital I/O      | Trigger / Echo                     |
+| Servo (Tilt)   |          10 | PWM              | Kamera-Neigung                     |
+| RGB-LEDs       |          13 | Timing-kritisch  | WS2812-Protokoll                   |
 
-| Funktion                 | Arduino-Pin | Typ     | Besonderheit       |
-| ------------------------ | ----------: | ------- | ------------------ |
-| Motor links (Vorwärts)   |           2 | Digital | Benötigt `SoftPWM` |
-| Motor links (Rückwärts)  |           3 | PWM     | Hardware-PWM       |
-| Motor rechts (Rückwärts) |           4 | Digital | Benötigt `SoftPWM` |
-| Motor rechts (Vorwärts)  |           5 | PWM     | Hardware-PWM       |
-| **IMU (SDA)** |          A4 | I2C     | MPU-6050 / GY-521  |
-| **IMU (SCL)** |          A5 | I2C     | MPU-6050 / GY-521  |
+---
 
-Weitere Pins (Sensoren, LEDs etc.) werden zentral in `Pins.h` gepflegt, um magische Zahlen im Code zu vermeiden.
+## 5. Coding Guidelines & Dokumentation
 
-### Mathematische Modelle
+Um die Software wartbar und sicher zu halten, gelten folgende Richtlinien (siehe `CONTRIBUTING.md`).
 
-In `src/logic/Motion.cpp` wird die differentielle Lenkung berechnet. Die PWM-Werte $PWM_L$ und $PWM_R$ ergeben sich aus der Soll-Geschwindigkeit $v$ und einem Lenk-Faktor.
+### 5.1 Dokumentations-Stil (Doxygen)
 
-  * Geradeausfahrt: $PWM_L = v,\quad PWM_R = v$
-  * Panzer-Wende: $PWM_L = -v,\quad PWM_R = +v$
+Doxygen wird mit Custom-Tags genutzt, um nicht nur das **Wie**, sondern auch das **Warum** und Sicherheitsaspekte zu dokumentieren:
 
------
+* `@brief` – Kurze Zusammenfassung (Was tut es?).
+* `@details` – Technische Tiefe, Algorithmen, Zustandsdiagramme.
+* `@safety` – Kritische Hinweise, z. B. „Funktion stoppt Motoren bei Verbindungsabbruch“.
+* `@hardware` – Listet physische Abhängigkeiten auf.
+* `@pre` – Vorbedingungen, z. B. „Rover muss stillstehen“.
 
-## 5\. Coding Guidelines
+### 5.2 C++-Standards
 
-Wir folgen strikten Richtlinien für **Embedded C++**:
+* **`constexpr` statt `#define`:**
+  Typ-sichere Konstanten, die zur Compile-Zeit ausgewertet werden.
 
-1.  **Non-Blocking I/O**
-    Kein Einsatz von `delay()` im Hauptloop. Alle zeitabhängigen Vorgänge werden über `millis()` und Zustandsautomaten (FSM) umgesetzt. Ausnahme: Kurze Wartezeiten bei der Initialisierung (Setup).
+* **`enum class`:**
+  Verhindert implizite Typumwandlungen und erhöht die Lesbarkeit von Zustandsautomaten.
 
-2.  **Starke Typisierung**
-    Verwendung von `enum class` für Zustände und Modusvariablen, um implizite Casts zu `int` zu vermeiden.
+* **Non-Blocking-Design:**
+  Keine `delay()`-Aufrufe in der `loop()`. Zeitsteuerung erfolgt ausschließlich über `millis()`-Vergleiche:
 
-3.  **Compiler-Standards**
+  ```cpp
+  if (now - lastAction > INTERVAL) {
+      // ...
+  }
+  ```
 
-      * AVR (Uno): `-std=gnu++17` (C++17 mit GNU-Extensions)
-      * ESP32 (XIAO): `-std=gnu++2a` (C++20-Support)
+---
 
-4.  **Ressourcen-Management**
+## 6. Build-Umgebungen
 
-      * Einsatz von `constexpr` für Konstanten, um RAM-Verbrauch zur Laufzeit zu minimieren.
-      * Vermeidung dynamischer Speicherallokation (`new`/`delete`) im zeitkritischen Pfad.
+Das Projekt nutzt `platformio.ini` zur Verwaltung verschiedener Build-Targets:
 
-5.  **Fehlerbehandlung / Logging**
+* **`env:uno` (Release):**
 
-      * Klare Trennung zwischen produktivem Code und Debug-Meldungen.
-      * Einsatz von `F("...")` Strings beim AVR, um RAM zu sparen.
+  * Optimiert für Speicherplatz (`-Os`).
+  * Debug-Logging minimiert.
 
------
+* **`env:uno-debug` (Development):**
 
-## 6\. Build-Umgebungen (Environments)
+  * Aktiviertes Serial-Logging (`-DDEBUG`).
+  * Detaillierte Sensorausgaben.
 
-Das Projekt wird über `platformio.ini` gesteuert und nutzt getrennte **Release-** und **Debug-Umgebungen**.
+* **`env:xiao_esp32s3` (Feature-Preview):**
 
-### Umgebung A: `env:uno` (Galaxy RVR – Release)
+  * Nutzung von C++20-Features.
+  * Erweitertes Memory-Limit für komplexe Algorithmen.
 
-  * **Plattform:** Atmel AVR
-  * **Board:** Arduino Uno
-  * **Code:** Kompiliert `src/hal/` und `src/logic/`, nutzt `SoftPWM` und `Wire`.
-  * **Port:** Automatisch oder via `/dev/cu.usbserial-xxxx`
-  * **Einsatz:** Produktions-Firmware.
+---
 
-### Umgebung B: `env:uno-debug` (Galaxy RVR – Debug)
+## 7. Erweiterungs-Workflow
 
-  * **Basis:** Erweitert `env:uno`
-  * **Zusatz:** `-DDEBUG` für zusätzliche Log-Ausgaben.
-  * **Zweck:** Fehlersuche, Diagnostik.
+Beispiel: Neuer Sensor (z. B. IR-Linienfolger) soll hinzugefügt werden.
 
------
+1. **Konfiguration:**
+   Pin in `include/Pins.h` definieren.
 
-## 7\. Workflow für Erweiterungen
+2. **HAL:**
+   Treiberklasse in `src/hal/LineSensor.cpp` erstellen
+   (Methoden: `init()`, `read()`).
 
-Beispiel: Ein neuer Sensor (z. B. IR-Linienfolger) soll integriert werden.
+3. **Logik:**
+   Algorithmus in `src/logic/LineFollower.cpp` schreiben
+   (Eingabe: Sensorwerte → Ausgabe: Lenkwinkel).
 
-1.  **Hardware-Konfiguration**
-    Pin in `include/Pins.h` als `constexpr` definieren.
+4. **Integration:**
+   In `main.cpp` instanziieren und in den State-Machine-Loop einhängen.
 
-2.  **Treiber (HAL)**
-    Klasse `IrSensor` in `src/hal/` implementieren.
+---
 
-3.  **Logik (Behavior)**
-    Auswertung der Sensordaten in `src/logic/` implementieren.
+## 8. Status
 
-4.  **Integration in die FSM**
-    In `src/main.cpp` einen neuen Zustand ergänzen und Übergänge definieren.
-
------
-
-*Dokumentation aktualisiert am: 24.11.2025*
-
+Status: **Active Maintenance**
+Letztes Update: **25.11.2025**

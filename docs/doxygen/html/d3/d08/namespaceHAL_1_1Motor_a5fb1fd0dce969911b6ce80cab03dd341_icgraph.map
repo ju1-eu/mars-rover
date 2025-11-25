@@ -1,5 +1,0 @@
-<map id="HAL::Motor::init" name="HAL::Motor::init">
-<area shape="rect" id="Node000001" title="Initialisiert die PWM&#45;Timer und Pin&#45;Zustände." alt="" coords="178,5,291,31"/>
-<area shape="rect" id="Node000002" href="$d6/da9/namespaceLogic_1_1Motion.html#a1c196b6f6c23b9116709afdf04b7e32d" title="Initialisiert die Bewegungslogik und die zugrundeliegende Motor&#45;Hardware." alt="" coords="5,5,130,31"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="162,21,130,21,130,16,162,16"/>
-</map>

@@ -1,5 +1,0 @@
-<map id="Logic::Motion::moveBackward" name="Logic::Motion::moveBackward">
-<area shape="rect" id="Node000001" title="Fährt den Roboter geradeaus rückwärts." alt="" coords="5,5,203,31"/>
-<area shape="rect" id="Node000002" href="$d3/d08/namespaceHAL_1_1Motor.html#a68bec045616eaddd0c9acbc5d9fe2bfa" title="Setzt die Geschwindigkeit für den Differenzialantrieb." alt="" coords="251,5,402,31"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="203,16,235,16,235,21,203,21"/>
-</map>

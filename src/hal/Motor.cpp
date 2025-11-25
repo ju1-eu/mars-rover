@@ -1,11 +1,25 @@
 /**
  * @file       Motor.cpp
- * @brief      Low-Level Treiber für DC-Motoren mittels Software-PWM.
- * @details    Steuert eine H-Brücke (z.B. L298N oder TB6612FNG) an.
- *             Nutzt die 'SoftPWM' Bibliothek, da der Mikrocontroller ggf.
- *             nicht genügend Hardware-PWM-Kanäle an den gewählten Pins hat.
- * @hardware   H-Brücke an Pins definiert in Pins.h
- * @dependency SoftPWM Library (CPU-intensiv!)
+ * @brief      Low-Level-Treiber für DC-Motoren mittels Software-PWM.
+ *
+ * @details
+ * Dieses Modul steuert eine zweikanalige H-Brücke (z. B. L298N oder
+ * TB6612FNG) für einen Differenzialantrieb an. Die Ansteuerung der
+ * Motorpins erfolgt über die SoftPWM-Bibliothek, um auch auf Pins ohne
+ * Hardware-PWM ein PWM-Signal bereitstellen zu können.
+ *
+ * Aufgaben:
+ *  - Kapselung der H-Brücken-Logik (Vorwärts/Rückwärts/Coast),
+ *  - Begrenzung der PWM-Werte auf System-Grenzen (Safety),
+ *  - Bereitstellung einer Testsequenz zur Funktionskontrolle der Motoren.
+ *
+ * @hardware
+ *  - H-Brücke: Pins gemäß @c Pins.h
+ *  - Board:   Arduino Uno / SunFounder R3-kompatibel
+ *
+ * @dependency
+ *  - SoftPWM Library (zeitkritisch, CPU-intensiv; kann andere Interrupts
+ *    stören, z. B. bei Ultraschallmessungen).
  */
 
 #include "hal/Motor.h"
@@ -16,26 +30,54 @@
 
 // ----------------------------------------------------------------------------
 // ANONYMOUS NAMESPACE
-// Dient der Kapselung: Funktionen hierdrin sind "private" für diese Datei.
-// Verhindert Namenskonflikte mit anderen driveSingleMotor-Funktionen im Linker.
+// Dient der Kapselung: Symbole sind nur in dieser Übersetzungseinheit sichtbar
+// und kollidieren nicht mit gleichnamigen Funktionen in anderen Dateien.
 // ----------------------------------------------------------------------------
 namespace {
 
-// Empfohlener Cruise-Bereich: 30–60 % von SpeedMax
+/**
+ * @brief Untere Empfehlung für Dauerfahrten als Anteil von @c Config::SpeedMax.
+ *
+ * @details
+ * Dient als Orientierungsgröße für Applikationslogik, die im „Cruise“-Bereich
+ * fahren möchte (Einsatz z. B. für spätere Komfortfunktionen).
+ */
 constexpr float CRUISE_MIN_FACTOR = 0.30f;
+
+/**
+ * @brief Obere Empfehlung für Dauerfahrten als Anteil von @c Config::SpeedMax.
+ */
 constexpr float CRUISE_MAX_FACTOR = 0.60f;
-// Für den Test nutzen wir eine feste Cruise-Geschwindigkeit in der Mitte:
+
+/**
+ * @brief Cruise-Faktor, der in der internen Testlogik verwendet wird.
+ *
+ * @details
+ * Für den Motor-Test wird bewusst ein konservativer Wert (20 % von
+ * @c SpeedMax ) verwendet, um die Belastung von Mechanik und Umgebung
+ * gering zu halten.
+ */
 constexpr float CRUISE_TEST_FACTOR = 0.20f;
 
 /**
- * @brief      Steuert einen einzelnen Kanal der H-Brücke an.
- * @details    Setzt die Logik für die Drehrichtung um und verhindert
- *             ungültige Zustände (beide Pins HIGH = Kurzschluss/Bremse).
+ * @brief Steuert einen einzelnen Motor-Kanal einer H-Brücke an.
  *
- * @param pinFwd  GPIO-Pin für Vorwärts-Signal
- * @param pinRev  GPIO-Pin für Rückwärts-Signal
- * @param speed   Geschwindigkeit (-Config::SpeedMax bis +Config::SpeedMax).
- *                Vorzeichen bestimmt die Richtung.
+ * @details
+ * Diese Funktion kapselt die Low-Level-Logik für einen Motor:
+ *  - Grenzwertbegrenzung (Clamping) von @p speed auf
+ *    [-Config::SpeedMax, Config::SpeedMax].
+ *  - Umsetzung der Drehrichtung:
+ *      - @p speed > 0 : Vorwärts,
+ *      - @p speed < 0 : Rückwärts,
+ *      - @p speed == 0 : Coasting (beide Ausgänge LOW).
+ *  - Verhindert aktiv den Zustand „beide Pins HIGH“, um Kurzschluss /
+ *    aktive Bremsung zu vermeiden (hier: explizit Coasting).
+ *
+ * @param pinFwd GPIO-Pin für das Vorwärts-Signal (IN1/IN3 der H-Brücke).
+ * @param pinRev GPIO-Pin für das Rückwärts-Signal (IN2/IN4 der H-Brücke).
+ * @param speed  Sollgeschwindigkeit im Bereich
+ *               [-Config::SpeedMax, +Config::SpeedMax].
+ *               Das Vorzeichen kodiert die Drehrichtung.
  */
 void driveSingleMotor(uint8_t pinFwd, uint8_t pinRev, int speed) {
     // --- SAFETY: Clamping (Grenzwertbegrenzung) ---
@@ -71,9 +113,25 @@ void driveSingleMotor(uint8_t pinFwd, uint8_t pinRev, int speed) {
 namespace HAL::Motor {
 
 /**
- * @brief Initialisiert die PWM-Timer und Pin-Zustände.
- * @warning SoftPWM blockiert Interrupts kurzzeitig. Bei Timing-Problemen
- *          mit Sensoren (z.B. Ultraschall) prüfen, ob Hardware-PWM nötig ist.
+ * @brief Initialisiert die SoftPWM-Logik und setzt die Motoren in einen
+ *        sicheren Grundzustand.
+ *
+ * @details
+ * - Startet den SoftPWM-Timer (Interrupt-gesteuerte Software-PWM).
+ * - Deaktiviert Fading-Effekte für alle Motorpins, um eine direkte und
+ *   latenzarme Ansteuerung zu gewährleisten.
+ * - Ruft @c stop() auf, um sicherzustellen, dass beide Motoren zu Beginn
+ *   spannungsfrei sind.
+ *
+ * @warning
+ * Die SoftPWM-Bibliothek blockiert Interrupts kurzzeitig. Bei zeitkritischen
+ * Sensoren (z. B. Ultraschall, Encoder) sollte geprüft werden, ob Hardware-PWM
+ * eine robustere Alternative darstellt.
+ *
+ * @pre
+ *  - Die Pinbelegung der H-Brücke ist gemäß @c Pins.h korrekt erfolgt.
+ * @post
+ *  - Beide Motoren stehen (Coasting, kein Antriebssignal).
  */
 void init() {
     // Startet den Timer-Interrupt für die Software-PWM
@@ -91,8 +149,26 @@ void init() {
 
 /**
  * @brief Setzt die Geschwindigkeit für den Differenzialantrieb.
- * @param leftSpeed   Geschwindigkeit links (negativ = rückwärts)
- * @param rightSpeed  Geschwindigkeit rechts (negativ = rückwärts)
+ *
+ * @details
+ * Abstraktionsschicht zwischen Kinematik (z. B. @c Logic::Motion ) und
+ * der H-Brücke. Die Funktion:
+ *  - interpretiert @p leftSpeed und @p rightSpeed als signierte PWM-Werte,
+ *  - delegiert die Ansteuerung an @c driveSingleMotor() für jeden Antrieb.
+ *
+ * Vorzeichenkonvention:
+ *  - @p speed > 0 : Vorwärtsdrehung des jeweiligen Motors,
+ *  - @p speed < 0 : Rückwärtsdrehung,
+ *  - @p speed = 0 : Coasting.
+ *
+ * @param leftSpeed   Geschwindigkeit des linken Motors
+ *                    (negativ = rückwärts, positiv = vorwärts).
+ * @param rightSpeed  Geschwindigkeit des rechten Motors
+ *                    (negativ = rückwärts, positiv = vorwärts).
+ *
+ * @note
+ * Werte außerhalb des durch @c Config::SpeedMax definierten Bereichs
+ * werden intern begrenzt (Clamping).
  */
 void setSpeed(int leftSpeed, int rightSpeed) {
     // Mapping der abstrakten "Links/Rechts"-Befehle auf physische Pins
@@ -101,26 +177,45 @@ void setSpeed(int leftSpeed, int rightSpeed) {
 }
 
 /**
- * @brief Wrapper für sofortigen Stopp.
+ * @brief Stoppt beide Motoren sofort (Coasting).
+ *
+ * @details
+ * Setzt beide Motoren auf @c speed = 0 und delegiert an @c setSpeed() .
+ * In der aktuellen Implementierung bedeutet dies:
+ *  - Beide H-Brücken-Ausgänge werden auf LOW gesetzt,
+ *  - Der Motor rollt aus (keine aktive Bremsung).
+ *
+ * @note
+ * Soll künftig aktives Bremsen implementiert werden, müsste die H-Brücke
+ * dafür angepasst (z. B. beide Eingänge HIGH) und das Verhalten hier
+ * entsprechend geändert werden.
  */
 void stop() { setSpeed(0, 0); }
 
 /**
  * @brief Nicht-blockierende Testsequenz für beide Motoren.
  *
- * Ablauf in 1-s-Schritten:
- *   0: Vorwärts
- *   1: Rückwärts
- *   2: Linksdrehung (auf der Stelle)
- *   3: Rechtsdrehung (auf der Stelle)
- *   4: Stopp (bleibt dann so)
+ * @details
+ * Ablauf in 1-s-Schritten (basierend auf @c millis() , ohne @c delay() ):
  *
- * Wird zyklisch aus main.cpp (Phase MOTOR_TEST) aufgerufen.
- * Die Zeitsteuerung nutzt millis(), kein delay().
+ *   - Schritt 0: Vorwärtsfahrt (beide Motoren vorwärts)
+ *   - Schritt 1: Rückwärtsfahrt (beide Motoren rückwärts)
+ *   - Schritt 2: Linksdrehung auf der Stelle
+ *   - Schritt 3: Rechtsdrehung auf der Stelle
+ *   - Schritt 4: Stopp (Coasting, bleibt in diesem Zustand)
  *
- * Logging:
- *   Es wird nur beim Wechsel des Testschritts eine Logzeile ausgegeben,
- *   um die serielle Ausgabe nicht zu fluten.
+ * Eigenschaften:
+ *  - Die Funktion ist für zyklischen Aufruf aus einer Diagnose- oder
+ *    Testschleife konzipiert (z. B. Hardware-Diagnosephase).
+ *  - Die Ausgabegeschwindigkeit wird über statische Variablen gesteuert,
+ *    sodass:
+ *      - nur bei Schrittwechsel eine Logzeile an @c Serial gesendet wird,
+ *      - die Motorbefehle nur beim Übergang zwischen Phasen geändert werden.
+ *
+ * @note
+ * Die Cruise-Testgeschwindigkeit ist fest auf ~20 % von @c SpeedMax
+ * eingestellt ( @c CRUISE_TEST_FACTOR ), um den Test reproduzierbar und
+ * vergleichsweise sicher zu halten.
  */
 void motorTestLogic() {
     static unsigned long lastStepChange = 0;

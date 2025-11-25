@@ -1,5 +1,0 @@
-<map id="Logic::Motion::moveForward" name="Logic::Motion::moveForward">
-<area shape="rect" id="Node000001" title="Fährt den Roboter geradeaus vorwärts." alt="" coords="5,5,192,31"/>
-<area shape="rect" id="Node000002" href="$d3/d08/namespaceHAL_1_1Motor.html#a68bec045616eaddd0c9acbc5d9fe2bfa" title="Setzt die Geschwindigkeit für den Differenzialantrieb." alt="" coords="240,5,391,31"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="192,16,224,16,224,21,192,21"/>
-</map>

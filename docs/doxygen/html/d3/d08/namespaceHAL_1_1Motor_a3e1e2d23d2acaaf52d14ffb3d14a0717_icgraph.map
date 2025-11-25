@@ -1,9 +1,0 @@
-<map id="HAL::Motor::stop" name="HAL::Motor::stop">
-<area shape="rect" id="Node000001" title="Wrapper für sofortigen Stopp." alt="" coords="390,31,511,56"/>
-<area shape="rect" id="Node000002" href="$d3/d08/namespaceHAL_1_1Motor.html#a5fb1fd0dce969911b6ce80cab03dd341" title="Initialisiert die PWM&#45;Timer und Pin&#45;Zustände." alt="" coords="203,5,316,31"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="374,36,317,28,317,23,375,31"/>
-<area shape="rect" id="Node000004" href="$d6/da9/namespaceLogic_1_1Motion.html#a021c49b4ee24ea819240e19e367da45d" title="Stoppt alle Motorbewegungen." alt="" coords="178,55,342,80"/>
-<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="375,56,343,60,342,55,374,50"/>
-<area shape="rect" id="Node000003" href="$d6/da9/namespaceLogic_1_1Motion.html#a1c196b6f6c23b9116709afdf04b7e32d" title="Initialisiert die Bewegungslogik und die zugrundeliegende Motor&#45;Hardware." alt="" coords="5,5,130,31"/>
-<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="188,21,130,21,130,16,188,16"/>
-</map>

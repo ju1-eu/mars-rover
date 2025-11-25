@@ -1,9 +1,0 @@
-<map id="Logic::Motion::init" name="Logic::Motion::init">
-<area shape="rect" id="Node000001" title="Initialisiert die Bewegungslogik und die zugrundeliegende Motor&#45;Hardware." alt="" coords="5,5,130,31"/>
-<area shape="rect" id="Node000002" href="$d3/d08/namespaceHAL_1_1Motor.html#a5fb1fd0dce969911b6ce80cab03dd341" title="Initialisiert die PWM&#45;Timer und Pin&#45;Zustände." alt="" coords="178,5,291,31"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="130,16,162,16,162,21,130,21"/>
-<area shape="rect" id="Node000003" href="$d3/d08/namespaceHAL_1_1Motor.html#a3e1e2d23d2acaaf52d14ffb3d14a0717" title="Wrapper für sofortigen Stopp." alt="" coords="339,5,460,31"/>
-<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="292,16,323,16,323,21,292,21"/>
-<area shape="rect" id="Node000004" href="$d3/d08/namespaceHAL_1_1Motor.html#a68bec045616eaddd0c9acbc5d9fe2bfa" title="Setzt die Geschwindigkeit für den Differenzialantrieb." alt="" coords="508,5,660,31"/>
-<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="461,16,493,16,493,21,461,21"/>
-</map>

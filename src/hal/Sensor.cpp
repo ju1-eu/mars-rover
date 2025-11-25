@@ -1,6 +1,21 @@
 /**
  * @file    Sensor.cpp
  * @brief   Implementierung der Sensor-HAL (IMU, Ultraschall, IR, Batterie).
+ *
+ * @details
+ * Dieses Modul kapselt alle Sensorzugriffe des Rovers in einer Hardware
+ * Abstraktionsschicht (HAL). Es stellt eine konsolidierte Schnittstelle für:
+ *
+ *  - Distanzmessung per Ultraschall (Single-Pin-Trig/Echo),
+ *  - Hinderniserkennung über IR-Sensoren (digital),
+ *  - Batteriespannungs- und Ladezustandsmessung (ADC),
+ *  - Lagedetektion (Pitch/Roll) und Gierrate (YawRate) mittels MPU6050 (GY-521)
+ *    inklusive Kalibrierung und Komplementärfilter.
+ *
+ * Ziel:
+ *  - Einheitlicher Zugriff auf Sensordaten,
+ *  - klare Trennung von Hardware-Zugriff und Applikationslogik,
+ *  - Wiederverwendbarkeit in Diagnosetools und Fahrlogik (DriveAssistant).
  */
 
 #include "hal/Sensor.h"
@@ -15,36 +30,83 @@
 namespace {
 
 // ======================= BATTERIE / ADC =======================
+
+/**
+ * @brief Untere Spannungsgrenze für das 2s-Batteriepack (vollständig entladen).
+ *
+ * @details
+ * Unterhalb dieses Wertes wird der Ladezustand (SOC) auf 0 % gesetzt.
+ */
 constexpr float BATTERY_MIN_V = 6.6f;
+
+/**
+ * @brief Obere Spannungsgrenze für das 2s-Batteriepack (voll geladen).
+ *
+ * @details
+ * Oberhalb dieses Wertes wird der Ladezustand (SOC) auf 100 % gesetzt.
+ */
 constexpr float BATTERY_MAX_V = 8.4f;
+
+/**
+ * @brief Referenzspannung am ADC-Eingang.
+ *
+ * @details
+ * Kalibrierter Wert (z. B. gemessen mit Multimeter) an AREF bzw. VCC.
+ */
 constexpr float ADC_REF_V = 5.246f;
+
+/**
+ * @brief Teilerfaktor des Spannungsteilers für die Batteriemessung.
+ *
+ * @details
+ * Bei einem 1:1-Teiler gilt @c BATTERY_DIVIDER = 2.0 .
+ */
 constexpr float BATTERY_DIVIDER = 2.0f;
 
 // ======================= IMU (MPU6050) =======================
+
+/** @brief I²C-Adresse des MPU6050. */
 constexpr uint8_t MPU_ADDR = 0x68;
+/** @brief Registeradresse: Power Management 1. */
 constexpr uint8_t REG_PWR_MGMT1 = 0x6B;
+/** @brief Registeradresse: Accel X High Byte (Start der Sensordaten). */
 constexpr uint8_t REG_ACCEL_XOUT_H = 0x3B;
+/** @brief Registeradresse: WHO_AM_I (Identifikation). */
 constexpr uint8_t REG_WHO_AM_I = 0x75;
 
+/** @brief LSB/g-Faktor für den Beschleunigungssensor (±2g). */
 constexpr float ACC_LSB_PER_G = 16384.0f;
+/** @brief LSB/(°/s)-Faktor für das Gyroskop (±250 °/s). */
 constexpr float GYRO_LSB_PER_DPS = 131.0f;
 
 // Filter-Parameter
+
+/**
+ * @brief Filterkoeffizient des Komplementärfilters.
+ *
+ * @details
+ * @c FILTER_ALPHA = 0.98 bedeutet:
+ *  - 98 % Gyro-Anteil (kurzfristig stabil, aber driftend),
+ *  - 2 % Accel-Anteil (langfristig stabil, aber rauschanfällig).
+ */
 constexpr float FILTER_ALPHA = 0.98f; // 98% Gyro, 2% Accel
 
-bool imuAvailable = false;
-bool imuCalibrated = false;
+bool imuAvailable = false;  ///< Flag: IMU über I²C erreichbar.
+bool imuCalibrated = false; ///< Flag: Offsets wurden kalibriert.
 
 // Für Ultraschall (persistenter Speicher)
-float g_lastDistanceCm = 999.0f;
+float g_lastDistanceCm = 999.0f; ///< Letzte gültige Distanzmessung [cm].
 
+/**
+ * @brief Einfache 3D-Vektorstruktur für interne Berechnungen.
+ */
 struct Vec3f {
     float x;
     float y;
     float z;
 };
 
-// Offsets
+// Offsets (IMU-Kalibrierwerte)
 Vec3f g_accOffsetLSB{0.0f, 0.0f, 0.0f};
 Vec3f g_gyroOffsetLSB{0.0f, 0.0f, 0.0f};
 
@@ -58,6 +120,13 @@ Vec3f g_lastAcc_g_rover{0.0f, 0.0f, 0.0f};
 Vec3f g_lastGyro_dps_rover{0.0f, 0.0f, 0.0f}; // Z = Yaw Rate
 
 // ---------- Low-Level I²C ----------
+
+/**
+ * @brief Schreibt ein Byte in ein Register des MPU6050.
+ *
+ * @param reg   Zielregisteradresse.
+ * @param value Zu schreibender Wert.
+ */
 void mpuWriteReg(uint8_t reg, uint8_t value) {
     Wire.beginTransmission(MPU_ADDR);
     Wire.write(reg);
@@ -65,6 +134,13 @@ void mpuWriteReg(uint8_t reg, uint8_t value) {
     Wire.endTransmission();
 }
 
+/**
+ * @brief Liest mehrere aufeinanderfolgende Register des MPU6050.
+ *
+ * @param startReg Startadresse des ersten Registers.
+ * @param buf      Zielpuffer für gelesene Bytes.
+ * @param len      Anzahl der zu lesenden Bytes.
+ */
 void mpuReadBytes(uint8_t startReg, uint8_t *buf, uint8_t len) {
     Wire.beginTransmission(MPU_ADDR);
     Wire.write(startReg);
@@ -75,6 +151,22 @@ void mpuReadBytes(uint8_t startReg, uint8_t *buf, uint8_t len) {
     }
 }
 
+/**
+ * @brief Liest Rohdaten (Accel + Gyro) aus dem MPU6050.
+ *
+ * @details
+ * Es werden 14 Byte ab @c REG_ACCEL_XOUT_H gelesen:
+ *  - 6 Byte Accel (X, Y, Z),
+ *  - 2 Byte Temperatur (ignoriert),
+ *  - 6 Byte Gyro (X, Y, Z).
+ *
+ * @param ax  Beschleunigung X (Raw-LSB).
+ * @param ay  Beschleunigung Y (Raw-LSB).
+ * @param az  Beschleunigung Z (Raw-LSB).
+ * @param gx  Gyro X (Raw-LSB).
+ * @param gy  Gyro Y (Raw-LSB).
+ * @param gz  Gyro Z (Raw-LSB).
+ */
 void readImuRaw(int16_t &ax, int16_t &ay, int16_t &az, int16_t &gx, int16_t &gy,
                 int16_t &gz) {
     uint8_t buf[14];
@@ -87,6 +179,25 @@ void readImuRaw(int16_t &ax, int16_t &ay, int16_t &az, int16_t &gx, int16_t &gy,
     gz = (static_cast<int16_t>(buf[12]) << 8) | buf[13];
 }
 
+/**
+ * @brief Initialisiert den MPU6050 und prüft die Verbindung.
+ *
+ * @details
+ * Durchführung:
+ *  1. Startet I²C mit 100 kHz (konservativ),
+ *  2. Aktiviert Wire-Timeout, um Bus-Hänger zu vermeiden,
+ *  3. Prüft Erreichbarkeit per @c endTransmission() ,
+ *  4. Führt einen Hardware-Reset durch,
+ *  5. Weckt den Sensor auf (Power-Management),
+ *  6. Liest @c WHO_AM_I und verifiziert, dass der Rückgabewert 0x68 ist.
+ *
+ * Bei Erfolg:
+ *  - setzt Statusvariablen zurück,
+ *  - initialisiert Zeitbasis für den Filter.
+ *
+ * @retval true  IMU erfolgreich initialisiert.
+ * @retval false Fehler bei I²C/WHO_AM_I – IMU nicht verfügbar.
+ */
 bool imuInit() {
     Wire.begin();
     Wire.setClock(100000); // Sicherheits-Geschwindigkeit (100kHz)
@@ -132,6 +243,20 @@ bool imuInit() {
 // ---------------------------------------------------------------------------
 namespace HAL::Sensor {
 
+/**
+ * @brief Initialisiert alle Sensoren (IR, Ultraschall, IMU).
+ *
+ * @details
+ * - Setzt IR-Pins als Eingänge,
+ * - belässt Ultraschall-Pins zur Laufzeit-Konfiguration in @c
+ * ultrasonicUpdate(),
+ * - versucht, die IMU zu initialisieren:
+ *   - bei Erfolg: @c imuAvailable = true,
+ *   - bei Fehler: @c imuAvailable = false und Fehlermeldung auf Serial.
+ *
+ * @note
+ * Sollte einmalig im @c setup() der Anwendung aufgerufen werden.
+ */
 void init() {
     pinMode(Pin::IR_Left, INPUT);
     pinMode(Pin::IR_Right, INPUT);
@@ -147,6 +272,26 @@ void init() {
 }
 
 // ====================== ULTRASCHALL ======================
+
+/**
+ * @brief Aktualisiert die Ultraschallmessung (nicht-blockierend im
+ * 100-ms-Raster).
+ *
+ * @details
+ * Ablauf:
+ *  1. Zeitgesteuerte Ausführung (alle ~100 ms),
+ *  2. Sendet 10-µs-Triggerpuls über @c Pin::Ultrasonic_Trig (OUTPUT),
+ *  3. Schaltet den Pin auf INPUT und misst mit @c pulseIn() die Echo-Pulsdauer,
+ *  4. Rechnet Pulsdauer über einen Kalibrierfaktor in Distanz (cm) um,
+ *  5. Führt Plausibilitätsprüfung (2–400 cm) durch und aktualisiert
+ *     @c g_lastDistanceCm .
+ *
+ * Bei @c duration == 0 (Timeout):
+ *  - wird @c g_lastDistanceCm auf 999 cm gesetzt („kein Echo“).
+ *
+ * @note
+ * Diese Funktion sollte zyklisch aus der Hauptschleife aufgerufen werden.
+ */
 void ultrasonicUpdate() {
     static unsigned long lastMeasure = 0;
     unsigned long now = millis();
@@ -182,9 +327,25 @@ void ultrasonicUpdate() {
     }
 }
 
+/**
+ * @brief Liefert die letzte gültige Ultraschall-Entfernung.
+ *
+ * @return Entfernung in Zentimetern.
+ *         Bei fehlendem Echo wurde zuvor 999.0f gesetzt.
+ */
 float getUltrasonicDistance() { return g_lastDistanceCm; }
 
-// Veraltete Test-Funktion (kann für Diagnose bleiben)
+/**
+ * @brief Diagnosefunktion für Ultraschallmessung.
+ *
+ * @details
+ * - Ruft intern @c ultrasonicUpdate() auf,
+ * - gibt nur bei signifikant geänderter Distanz (> 1 cm) einen Log-Eintrag
+ *   auf Serial aus.
+ *
+ * @note
+ * Geeignet für Hardware-Tests, ohne den seriellen Monitor zu fluten.
+ */
 void ultrasonicTest() {
     ultrasonicUpdate(); // Ruft die Logik auf
     static float lastPrintDist = -1.0f;
@@ -198,11 +359,36 @@ void ultrasonicTest() {
 }
 
 // ====================== IR SENSOREN ======================
+
+/**
+ * @brief Prüft, ob der linke IR-Sensor ein Hindernis detektiert.
+ *
+ * @retval true  Hindernis erkannt (LOW).
+ * @retval false Kein Hindernis (HIGH).
+ */
 bool irLeftBlocked() { return digitalRead(Pin::IR_Left) == LOW; }
+
+/**
+ * @brief Prüft, ob der rechte IR-Sensor ein Hindernis detektiert.
+ *
+ * @retval true  Hindernis erkannt (LOW).
+ * @retval false Kein Hindernis (HIGH).
+ */
 bool irRightBlocked() { return digitalRead(Pin::IR_Right) == LOW; }
 
+/**
+ * @brief Diagnosefunktion für die beiden IR-Hindernissensoren.
+ *
+ * @details
+ * - Pollt beide IR-Eingänge,
+ * - loggt Änderungen (oder erste Messung) mit einer Minimalperiode von 50 ms,
+ * - gibt den Status beider Seiten (LEFT/RIGHT, BLOCKED/CLEAR) aus.
+ *
+ * @note
+ * Eignet sich zur schnellen Prüfung von Sensorlage, Ausrichtung und
+ * Empfindlichkeit (z. B. in einer Hardware-Diagnosephase).
+ */
 void irTest() {
-    // ... (Code wie gehabt) ...
     static unsigned long lastPrint = 0;
     static bool lastLeft = false;
     static bool lastRight = false;
@@ -228,6 +414,20 @@ void irTest() {
 }
 
 // ====================== BATTERIE ======================
+
+/**
+ * @brief Ermittelt die aktuelle Batteriespannung.
+ *
+ * @details
+ * Ablauf:
+ *  1. Liest ADC-Rohwert an @c Pin::Battery .
+ *  2. Rechnet in ADC-Spannung @c adcVoltage um (unter Verwendung von
+ *     @c ADC_REF_V ).
+ *  3. Multipliziert mit @c BATTERY_DIVIDER , um Packspannung zu erhalten.
+ *  4. Rundet auf eine Nachkommastelle.
+ *
+ * @return Batteriespannung des 2s-Packs in Volt (eine Nachkommastelle).
+ */
 float getBatteryVoltage() {
     int adcValue = analogRead(Pin::Battery);
     float adcVoltage = static_cast<float>(adcValue) * ADC_REF_V / 1023.0f;
@@ -236,6 +436,18 @@ float getBatteryVoltage() {
            10.0f;
 }
 
+/**
+ * @brief Schätzt den Ladezustand (SOC) der Batterie in Prozent.
+ *
+ * @details
+ * Verwendet eine lineare Interpolation zwischen:
+ *  - @c BATTERY_MIN_V → 0 %,
+ *  - @c BATTERY_MAX_V → 100 %.
+ *
+ * Werte außerhalb dieses Bereichs werden saturiert.
+ *
+ * @return Ladezustand in Prozent (0–100).
+ */
 uint8_t getBatteryPercentage() {
     float u = getBatteryVoltage();
     if (u <= BATTERY_MIN_V)
@@ -246,10 +458,41 @@ uint8_t getBatteryPercentage() {
         (u - BATTERY_MIN_V) / (BATTERY_MAX_V - BATTERY_MIN_V) * 100.0f + 0.5f);
 }
 
+/**
+ * @brief Platzhalter für Batterieladeerkennung.
+ *
+ * @details
+ * Aktuell wird kein Hardware-Pin zur Erkennung eines Ladestatus ausgewertet.
+ * Die Funktion liefert daher immer @c false .
+ *
+ * @retval false Aktuell keine Ladesituation erkennbar (Stub).
+ */
 bool isBatteryCharging() { return false; }
 
 // ====================== IMU (Kalibrierung & Logik) ======================
 
+/**
+ * @brief Führt eine Offset-Kalibrierung der IMU in Überkopf-Montage durch.
+ *
+ * @details
+ * Ablauf:
+ *  - Prüft, ob die IMU verfügbar ist,
+ *  - sammelt @p samples Messwerte in Roh-LSB,
+ *  - bildet Mittelwerte für Accel- und Gyroachsen,
+ *  - berücksichtigt bei der Z-Achse des Accelerometers die Überkopf-Montage:
+ *    - statische Lage erwartet -1g → Offset = Mittelwert + 1g in LSB.
+ *  - speichert Offsets in @c g_accOffsetLSB und @c g_gyroOffsetLSB,
+ *  - setzt @c imuCalibrated = true.
+ *
+ * Während der Kalibrierung wird alle 50 Samples ein Punkt auf Serial
+ * ausgegeben (Fortschrittsanzeige).
+ *
+ * @param samples Anzahl der Messungen für die Mittelwertbildung.
+ *
+ * @warning
+ * Während der Kalibrierung muss der Rover unbedingt still stehen, damit
+ * die Offsets gültig sind.
+ */
 void imuCalibrate(uint16_t samples) {
     if (!imuAvailable)
         return;
@@ -288,6 +531,25 @@ void imuCalibrate(uint16_t samples) {
     Serial.println(F("IMU: Kalibrierung fertig."));
 }
 
+/**
+ * @brief Aktualisiert IMU-Werte und berechnet gefilterte Winkel (Pitch/Roll).
+ *
+ * @details
+ * Ablauf pro Aufruf:
+ *  1. Prüft, ob IMU verfügbar und kalibriert ist.
+ *  2. Berechnet Zeitdelta @c dt auf Basis von @c micros() .
+ *  3. Liest Rohdaten (Accel, Gyro) aus.
+ *  4. Wendet Offsets an und skaliert auf g bzw. °/s.
+ *  5. Transformiert in den Rover-Frame (Überkopf-Montage):
+ *     - Z-Achse und Gierrate werden invertiert.
+ *  6. Berechnet aus Accelerometer-Werten „Accel-only“-Winkel
+ *     ( @c acc_pitch , @c acc_roll ).
+ *  7. Führt Komplementärfilterung von Pitch/Roll durch:
+ *     - Kombination aus integrierter Gyro-Rate und Accel-Winkel.
+ *
+ * Die gefilterten Winkel werden in @c g_pitch bzw. @c g_roll gehalten
+ * und können über die Getter gelesen werden.
+ */
 void imuUpdate() {
     if (!imuAvailable || !imuCalibrated)
         return;
@@ -334,10 +596,45 @@ void imuUpdate() {
 }
 
 // Getter
+
+/**
+ * @brief Liefert den gefilterten Pitch-Winkel (Nase hoch/runter).
+ *
+ * @return Pitch in Grad (positiv = Nase hoch).
+ */
 float getPitch() { return g_pitch; }
+
+/**
+ * @brief Liefert den gefilterten Roll-Winkel (Seitliches Kippen).
+ *
+ * @return Roll in Grad (positiv = Kippung entsprechend Achsenkonvention).
+ */
 float getRoll() { return g_roll; }
+
+/**
+ * @brief Liefert die aktuelle Gierrate (YawRate) im Rover-Frame.
+ *
+ * @details
+ * - basiert auf der Z-Achse des Gyroskops,
+ * - Vorzeichen ist so gewählt, dass positive Werte einer Linksdrehung
+ *   entsprechen (gemäß Tests und Koordinatensystem).
+ *
+ * @return Gierrate in °/s.
+ */
 float getYawRate() { return g_lastGyro_dps_rover.z; }
 
+/**
+ * @brief Diagnosefunktion für IMU (Pitch/Roll/YawRate + Kippalarm).
+ *
+ * @details
+ * - Ruft @c imuUpdate() auf,
+ * - gibt alle 100 ms die aktuellen Werte auf Serial aus,
+ * - signalisiert via Text, wenn der Betrag von Pitch > 45° ist (Kippalarm).
+ *
+ * @note
+ * Eignet sich zur Prüfung der Einbaulage, der Kalibrierung und der
+ * Filterparameter.
+ */
 void imuTest() {
     imuUpdate();
     static unsigned long lastPrint = 0;

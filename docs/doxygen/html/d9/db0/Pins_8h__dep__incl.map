@@ -1,5 +1,0 @@
-<map id="include/Pins.h" name="include/Pins.h">
-<area shape="rect" id="Node000001" title="Zentrale Definition aller GPIO Pin&#45;Zuordnungen." alt="" coords="14,5,118,31"/>
-<area shape="rect" id="Node000002" href="$dc/dc2/Motor_8cpp.html" title="Low&#45;Level Treiber für DC&#45;Motoren mittels Software&#45;PWM." alt="" coords="5,79,127,105"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="69,46,69,79,63,79,63,46"/>
-</map>

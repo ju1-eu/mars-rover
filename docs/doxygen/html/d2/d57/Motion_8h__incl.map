@@ -1,7 +1,0 @@
-<map id="include/Motion.h" name="include/Motion.h">
-<area shape="rect" id="Node000001" title="Schnittstellendefinition für die Fahrzeug&#45;Kinematik&#45;Steuerung." alt="" coords="32,5,148,31"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="5,79,82,105"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="85,33,62,67,57,64,80,30"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="106,79,170,105"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="100,30,124,64,119,67,96,33"/>
-</map>

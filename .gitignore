@@ -24,10 +24,7 @@ CMakeFiles/
 # Doxygen – generierte Dokumentation
 # (Doxyfile bleibt im Repo, HTML/PDF wird ignoriert)
 # ======================================
-docs/doxygen/html/
-docs/doxygen/latex/
-docs/doxygen/xml/
-docs/doxygen/man/
+docs/doxygen/
 
 # ======================================
 # System-/Backup-Dateien

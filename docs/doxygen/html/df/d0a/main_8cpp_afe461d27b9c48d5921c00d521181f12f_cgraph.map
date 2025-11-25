@@ -1,5 +1,0 @@
-<map id="loop" name="loop">
-<area shape="rect" id="Node000001" title="Hauptschleife (Control Loop)." alt="" coords="5,5,51,31"/>
-<area shape="rect" id="Node000002" href="$df/d0a/main_8cpp.html#aec9c588a2f52d0b37fcea175c16afbbf" title="Verarbeitet exemplarische Daten aus einem STL&#45;Vektor (ESP32&#45;Funktion)." alt="" coords="99,5,212,31"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="51,16,83,16,83,21,51,21"/>
-</map>
