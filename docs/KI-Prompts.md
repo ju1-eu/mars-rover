@@ -1,6 +1,6 @@
 # KI
 
-bearbeitet am 2025-11-22
+bearbeitet am 2025-11-25
 
 ---
 
@@ -84,7 +84,8 @@ Brücke: STEAM-Projekt × GalaxyRVR (SunFounder: <https://docs.sunfounder.com/pr
 Erstelle ein Konzept (Selbstlernprojekt, Grundstruktur in Phasen)
 Erstelle ein Briefing
 
-
+Schlüsselfragen und keywords in listenform
+Spickzettel oder Checkliste Lernzielkontrolle
 
 Formatiere Text in **Latex** ohne Präambel
 
@@ -122,6 +123,7 @@ Formatiere Text in **Latex** ohne Präambel
 - **ABC-Liste** nach Birkenbihl
 
 Concept Map: Wissenvernetzung (textbasierte strukturierte Listenform)
+Visualisierung (Mermaid Diagramm)
 
 strukturiertes wissenschaftliches Exzerpt zur Wissensarchivierung (Zettelkasten).
 
@@ -157,5 +159,30 @@ Ursache-Wirkungs-Ketten darstellen, systemisch denken, konsistente Methodik anwe
 1. **Fairness statt Neutralität**
 Eigene Haltung transparent machen, Wohlwollen zeigen, Kritisierbarkeit zulassen, intellektuelle Aufrichtigkeit wahren.
 **Kernfrage**: Würde ein Fachexperte die Korrektheit bestätigen UND versteht ein Laie die Kernaussage
+
+
+
+Meine Kommunikationsprinzipien sind:
+
+> Stil (klar, präzise, prägnant, neutral), Struktur (logischer Aufbau, fundierte Begründungen, klare Hierarchie), Inhalt (sachliche Korrektheit, differenzierte Betrachtung, kritisches Hinterfragen), Perspektiven (alternative Sichtweisen, kontroverse Meinungen, Grenzen benannt), Verständlichkeit (einfache Erklärungen, Begriffe erklärt, schrittweise Entwicklung) und Formulierung (aktive Sprache, konkrete Aussagen, sachbezogen).
+
+
+> Meine Kommunikation folgt dem Prinzip der doppelten Legitimation, indem sie fundierte, evidenzbasierte Fachkenntnisse (Primärquellen, Daten) durch klare Didaktik und präzise Sprache für Laien zugänglich macht. Ich verbinde sachliche Tiefe (Differenzierung, kritische Analyse) mit menschlicher Nahbarkeit (Authentizität, Fairness, aktive Ansprache auf Augenhöhe). Das Ziel ist eine intellektuell redliche Vermittlung, die fachlich unangreifbar ist, aber durch Einfachheit, Logik und Transparenz überzeugt. Mein Stil sollte klar, präzise, prägnant und neutral sein.“
+
+
+**1. Der Anspruch (Das „Warum“)**
+
+* **Doppelte Legitimation:** Die Schnittmenge aus Experten-Validität und Laien-Verständnis.
+* **Inhalt:** Setze hier den Fokus auf die *Fachlichkeit* aus (Primärquellen, 2015-2025, Daten) und die *Korrektheit*
+
+**2. Das Handwerk (Das „Wie“)**
+
+* **Struktur & Didaktik:** Verbinde die *logische Hierarchie* mit den *deduktiven/induktiven Methoden*.
+* **Sprache:** Nutze die *aktive, konkrete Sprache* als Mittel, um *Paternalismus zu vermeiden*.
+
+**3. Die Haltung (Der „Ton“)**
+
+* **Fairness & Differenzierung:** Ersetze „Neutralität“ durch das stärkere „Fairness“. Man bleibt *sachlich* korrekt, hat aber eine *transparente Haltung*.
+* **Authentizität:** *Grenzen benennen* und *Unsicherheiten zugeben* schafft Vertrauen.
 
 ---

@@ -1,36 +1,36 @@
-## ToDo's – Mars Rover
+# To-Do's – Mars Rover
 
-- [ ] Lektion 1: Enthüllung des Mars-Rovers
-- [ ] Lektion 2: Verständnis und Bau des Rocker-Bogie-Systems
-- [ ] Lektion 3: Einstieg in die Welt von Arduino und Programmierung
-- [ ] Lektion 4: Beherrschung des TT-Motors
-- [ ] Lektion 5: Entfesselung der Beweglichkeit des Mars-Rovers
-- [ ] Lektion 6: Erkundung des Hindernisvermeidungsmoduls
-- [ ] Lektion 7: Verbesserung der Rover-Navigation mit Ultraschallmodul
-- [ ] Lektion 8: Fortgeschrittene Hindernisvermeidung und intelligentes Folgesystem
-- [ ] Lektion 9: Den Weg mit RGB-LED-Streifen beleuchten
-- [ ] Lektion 10: Erkundung des visuellen Systems des Mars-Rovers – Servo und Kippmechanismus
+- [x] Lektion 1: Enthüllung des Mars-Rovers
+- [x] Lektion 2: Verständnis und Bau des Rocker-Bogie-Systems
+- [x] Lektion 3: Einstieg in die Welt von Arduino und Programmierung
+- [x] Lektion 4: Beherrschung des TT-Motors
+- [x] Lektion 5: Entfesselung der Beweglichkeit des Mars-Rovers
+- [x] Lektion 6: Erkundung des Hindernisvermeidungsmoduls
+- [x] Lektion 7: Verbesserung der Rover-Navigation mit Ultraschallmodul
+- [x] Lektion 8: Fortgeschrittene Hindernisvermeidung und intelligentes Folgesystem
+- [x] Lektion 9: Den Weg mit RGB-LED-Streifen beleuchten
+- [x] Lektion 10: Erkundung des visuellen Systems des Mars-Rovers – Servo und Kippmechanismus
 - [ ] Lektion 11: Erforschung des visuellen Systems des Mars-Rovers – Kamera und Echtzeitsteuerung
 - [ ] Lektion 12: Steuerung des Rovers mit der App
-- [ ] Lektion 13: Untersuchung des Energiesystems des Mars-Rovers
+- [x] Lektion 13: Untersuchung des Energiesystems des Mars-Rovers
 
 ## Hardware – Mars Rover
 
-- [ ] SunFounder R3 Board (Arduino-UNO-kompatibel)
-- [ ] GalaxyRVR Shield
+- [x] SunFounder R3 Board (Arduino-UNO-kompatibel)
+- [x] GalaxyRVR Shield
 - [ ] ESP32-CAM
 - [ ] Kamera-Adapterplatine (**HINWEIS**: QMC6310 – 3-Achsen-Magnetfeldsensor nicht verbaut im Mars-Rover)
-- [ ] Ultraschallmodul (SONAR)
-- [ ] IR-Hindernisvermeidungsmodul (links/rechts)
-- [ ] 4 RGB-LED-Streifen
-- [ ] Servo (Kameraneigung)
-- [ ] 2× TT-Getriebemotoren
-- [ ] Solarpanel (am SOLAR-Port des Shields)
-- [ ] 2× 18650-Li-Ion-Akkus (Battery-Pack)
+- [x] Ultraschallmodul (SONAR)
+- [x] IR-Hindernisvermeidungsmodul (links/rechts)
+- [x] 4 RGB-LED-Streifen
+- [x] Servo (Kameraneigung)
+- [x] 2× TT-Getriebemotoren
+- [x] Solarpanel (am SOLAR-Port des Shields)
+- [x] 2× 18650-Li-Ion-Akkus (Battery-Pack)
 
 ---
 
-**autonomen Rover**
+## Autonomen Rover
 
 Rover fährt autonom, stabilisiert sich selbst (Gierrate ~0.0) und weicht Hindernissen mit einer präzisen 180°-Wende aus. Das ist ein voll funktionsfähiges Robotik-System.
 
