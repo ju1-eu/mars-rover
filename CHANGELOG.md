@@ -6,6 +6,32 @@ Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/en/1
 
 ---
 
+## [1.2.0] - 2025-11-25
+
+### 🚀 Phase 1 Finalisierung (Stabilisierung & Doku)
+
+Dieses Release markiert den Abschluss von Phase 1. Der Rover fährt nun stabil geradeaus, kompensiert mechanische Defizite und führt präzise Wenden aus.
+
+### 🎁 Hinzugefügt (Added)
+
+* **Feed-Forward Bias:** Einführung von `BIAS_TRIM` in `DriveAssistant`, um den mechanischen Rechtsdrall (Hardware-Asymmetrie) statisch auszugleichen.
+* **Inertia-Kompensation:** Die Funktion `performTurn180` berücksichtigt nun die Massenträgheit des Chassis und stoppt die Motoren bereits bei **177,9°**, um exakt auf 180° auszurollen.
+* **Didaktische Dokumentation:** Vollständige Doxygen-Kommentierung (`@safety`, `@unit`, `@hardware`) inkl. LaTeX-Formeln für `DriveAssistant`, `PidController` und `main.cpp`.
+
+### 🔄 Geändert (Changed)
+
+* **PID-Tuning:** Aggressivität drastisch reduziert ($K_p$ von 2.0 auf **0.6**, $K_d$ auf 0.0), um das "Zittern" (Oszillation) auf hartem Untergrund zu eliminieren.
+* **Deadzone-Logik:** Der Regler führt nun einen **Reset** durch, wenn er sich in der Totzone befindet, anstatt den Input nur zu ignorieren. Dies verhindert "Integral Windup" (Geister-Drift).
+* **Sensitivität:** Deadzone-Schwellenwert von 3.0°/s auf **0.3°/s** gesenkt, um auch feine Drift-Bewegungen zu erfassen.
+
+### 🩹 Behoben (Fixed)
+
+* **Oszillation:** Starkes Rütteln der Motoren bei Geradeausfahrt behoben.
+* **Drift:** Konstanter Rechtsdrall durch Kombination aus Bias-Trimmung und PID-Regelung korrigiert.
+* **Overshoot:** Wende-Manöver dreht nicht mehr über das Ziel ( > 180°) hinaus.
+
+---
+
 ## [1.1.0] - 2025-11-22
 
 ### 🎁 Hinzugefügt (Added)

@@ -1,7 +1,7 @@
 ---
 title: "GalaxyRVR Profi – Firmware-Dokumentation"
 file: "README.md"
-version: "1.1.0"
+version: "1.2.0"
 author: "Jan Unger"
 status: "active"
 kanban.board: "Mars Rover"
@@ -14,9 +14,9 @@ Das Projekt dient als Referenzimplementierung für Embedded-C++-Entwicklung, mit
 
 ## Links
 
-- [SunFounder Galaxy RVR Kit](#)
-- [API-Dokumentation (Doxygen)](#)
-- [Projekt-Board & Roadmap](#)
+- [SunFounder Galaxy RVR Kit](https://www.sunfounder.com/products/galaxy-rvr-kit) (Beispiel-Link)
+- [API-Dokumentation (Doxygen)](./docs/doxygen/index.html)
+- [Projekt-Board & Roadmap](./docs/ROADMAP.md)
 
 ---
 
@@ -64,10 +64,8 @@ Abhängigkeiten verlaufen ausschließlich von oben nach unten
 - **Details:**
   - Übersetzung von abstrakten Wünschen („Fahre Kurve“) in konkrete Aktorwerte.
   - **Differential-Drive-Kinematik:**
-    Berechnung der Raddrehzahlen basierend auf Soll-Geschwindigkeit \(v\) und Kurvenradius \(r\):
-
+    Berechnung der Raddrehzahlen basierend auf Soll-Geschwindigkeit $v$ und Kurvenradius $r$:
     $$v_{\text{in}} = v \cdot (1.0 - r)$$
-
   - **DriveAssistant:**
     PID-Regler, der die Gierrate (Yaw-Rate) nutzt, um den Rover aktiv auf Kurs zu halten.
 
@@ -106,11 +104,11 @@ GalaxyRVR_Profi/
 │   └── main.cpp            # Einstiegspunkt & State Machine
 ├── test/                   # Unit-Tests & Diagnose-Sketches
 └── platformio.ini          # Build-Umgebungen
-````
+```
 
----
+-----
 
-## 4. Hardware-Konfiguration (Mapping)
+## 4\. Hardware-Konfiguration (Mapping)
 
 Die Pin-Belegung ist zentral in `include/Pins.h` definiert.
 „Magische Zahlen“ im Code werden vermieden.
@@ -125,9 +123,9 @@ Aufgrund der Timer-Limitierungen des ATmega328P wird eine Hybrid-Lösung aus Har
 | Servo (Tilt)   |          10 | PWM              | Kamera-Neigung                     |
 | RGB-LEDs       |          13 | Timing-kritisch  | WS2812-Protokoll                   |
 
----
+-----
 
-## 5. Coding Guidelines & Dokumentation
+## 5\. Coding Guidelines & Dokumentation
 
 Um die Software wartbar und sicher zu halten, gelten folgende Richtlinien (siehe `CONTRIBUTING.md`).
 
@@ -135,73 +133,74 @@ Um die Software wartbar und sicher zu halten, gelten folgende Richtlinien (siehe
 
 Doxygen wird mit Custom-Tags genutzt, um nicht nur das **Wie**, sondern auch das **Warum** und Sicherheitsaspekte zu dokumentieren:
 
-* `@brief` – Kurze Zusammenfassung (Was tut es?).
-* `@details` – Technische Tiefe, Algorithmen, Zustandsdiagramme.
-* `@safety` – Kritische Hinweise, z. B. „Funktion stoppt Motoren bei Verbindungsabbruch“.
-* `@hardware` – Listet physische Abhängigkeiten auf.
-* `@pre` – Vorbedingungen, z. B. „Rover muss stillstehen“.
+  * `@brief` – Kurze Zusammenfassung (Was tut es?).
+  * `@details` – Technische Tiefe, Algorithmen, Zustandsdiagramme.
+  * `@safety` – Kritische Hinweise, z. B. „Funktion stoppt Motoren bei Verbindungsabbruch“.
+  * `@hardware` – Listet physische Abhängigkeiten auf.
+  * `@pre` – Vorbedingungen, z. B. „Rover muss stillstehen“.
 
 ### 5.2 C++-Standards
 
-* **`constexpr` statt `#define`:**
-  Typ-sichere Konstanten, die zur Compile-Zeit ausgewertet werden.
+  * **`constexpr` statt `#define`:**
+    Typ-sichere Konstanten, die zur Compile-Zeit ausgewertet werden.
 
-* **`enum class`:**
-  Verhindert implizite Typumwandlungen und erhöht die Lesbarkeit von Zustandsautomaten.
+  * **`enum class`:**
+    Verhindert implizite Typumwandlungen und erhöht die Lesbarkeit von Zustandsautomaten.
 
-* **Non-Blocking-Design:**
-  Keine `delay()`-Aufrufe in der `loop()`. Zeitsteuerung erfolgt ausschließlich über `millis()`-Vergleiche:
+  * **Non-Blocking-Design:**
+    Keine `delay()`-Aufrufe in der `loop()`. Zeitsteuerung erfolgt ausschließlich über `millis()`-Vergleiche:
 
-  ```cpp
-  if (now - lastAction > INTERVAL) {
-      // ...
-  }
-  ```
+    ```cpp
+    if (now - lastAction > INTERVAL) {
+        // ...
+    }
+    ```
 
----
+-----
 
-## 6. Build-Umgebungen
+## 6\. Build-Umgebungen
 
 Das Projekt nutzt `platformio.ini` zur Verwaltung verschiedener Build-Targets:
 
-* **`env:uno` (Release):**
+  * **`env:uno` (Release):**
 
-  * Optimiert für Speicherplatz (`-Os`).
-  * Debug-Logging minimiert.
+      * Optimiert für Speicherplatz (`-Os`).
+      * Debug-Logging minimiert.
 
-* **`env:uno-debug` (Development):**
+  * **`env:uno-debug` (Development):**
 
-  * Aktiviertes Serial-Logging (`-DDEBUG`).
-  * Detaillierte Sensorausgaben.
+      * Aktiviertes Serial-Logging (`-DDEBUG`).
+      * Detaillierte Sensorausgaben.
 
-* **`env:xiao_esp32s3` (Feature-Preview):**
+  * **`env:xiao_esp32s3` (Feature-Preview):**
 
-  * Nutzung von C++20-Features.
-  * Erweitertes Memory-Limit für komplexe Algorithmen.
+      * Nutzung von C++20-Features.
+      * Erweitertes Memory-Limit für komplexe Algorithmen.
 
----
+-----
 
-## 7. Erweiterungs-Workflow
+## 7\. Erweiterungs-Workflow
 
 Beispiel: Neuer Sensor (z. B. IR-Linienfolger) soll hinzugefügt werden.
 
-1. **Konfiguration:**
-   Pin in `include/Pins.h` definieren.
+1.  **Konfiguration:**
+    Pin in `include/Pins.h` definieren.
 
-2. **HAL:**
-   Treiberklasse in `src/hal/LineSensor.cpp` erstellen
-   (Methoden: `init()`, `read()`).
+2.  **HAL:**
+    Treiberklasse in `src/hal/LineSensor.cpp` erstellen
+    (Methoden: `init()`, `read()`).
 
-3. **Logik:**
-   Algorithmus in `src/logic/LineFollower.cpp` schreiben
-   (Eingabe: Sensorwerte → Ausgabe: Lenkwinkel).
+3.  **Logik:**
+    Algorithmus in `src/logic/LineFollower.cpp` schreiben
+    (Eingabe: Sensorwerte → Ausgabe: Lenkwinkel).
 
-4. **Integration:**
-   In `main.cpp` instanziieren und in den State-Machine-Loop einhängen.
+4.  **Integration:**
+    In `main.cpp` instanziieren und in den State-Machine-Loop einhängen.
 
----
+-----
 
-## 8. Status
+## 8\. Status
 
-Status: **Active Maintenance**
-Letztes Update: **25.11.2025**
+  - **Status:** Active Maintenance
+  - **Phase:** 1.0 (Abgeschlossen) – Grundlegende Fahrt, Sensor-Fusion, PID-Regelung.
+  - **Letztes Update:** 25.11.2025

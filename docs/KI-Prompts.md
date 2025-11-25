@@ -64,7 +64,13 @@ Text in Tabellenform
 
 Rechtschreibung und Grammatik überprüfen:
 
+Prüfe und passe an
 Formatiere Text in GFM (**GitHub Flavored Markdown**), optimiert für Pandoc und unter Verwendung von LaTeX für mathematische Formeln.
+Text:
+
+**visualisiere** mermaid (flowchart)
+`classDef hellgrau fill:#f0f0f0,stroke:#cccccc,stroke-width:1px;`
+
 
 Kernkonventionen:
 
