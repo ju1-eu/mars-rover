@@ -1,176 +1,169 @@
 /**
  * @file       DriveAssistant.cpp
- * @brief      Spurhalte- und Kippschutz-Assistent auf Basis der IMU-Daten.
+ * @brief      Logik-Modul für assistierte Geradeausfahrt und Kippschutz.
  *
  * @details
- * Dieses Modul implementiert einen einfachen Fahrassistenten für den Rover,
- * der zwei Hauptaufgaben übernimmt:
+ * Dieses Modul implementiert einen Regelkreis (Closed Loop Control), der den
+ * Rover softwareseitig stabilisiert. Es kompensiert mechanische Imperfektionen
+ * und äußere Störungen.
  *
- *  1. Kippschutz:
- *     - Überwacht den Pitch-Winkel (Nase hoch/runter) der IMU.
- *     - Überschreitet der Betrag von Pitch einen konfigurierten Grenzwert
- *       (@c MAX_PITCH_DEG ), wird ein Sicherheits-Flag gesetzt und der
- *       Aufrufer kann einen Not-Stopp auslösen.
+ * **Architektur & Regelungstechnik:**
+ * - **Feed-Forward (Steuerung):** Der statische `BIAS_TRIM` gleicht permanente
+ * Hardware-Asymmetrien (z.B. unterschiedliche Reibung im Getriebe) aus,
+ * bevor der Regler eingreift.
+ * - **Feedback (Regelung):** Der PID-Regler (hier als reiner P-Regler
+ * konfiguriert) reagiert auf dynamische Störungen (Teppichkanten, Schlupf).
  *
- *  2. Spurhaltung / Drift-Kompensation:
- *     - Nutzt die Gierrate (YawRate), um ungewollte Drehbewegungen zu
- *       erkennen (Drift).
- *     - Ein einfacher P-Regler berechnet aus der Gierrate eine Korrektur,
- *       die links/rechts differenziell auf die Motoren verteilt wird.
- *       Dadurch wird versucht, den Rover auf einer Geradeauslinie zu halten.
- *
- * Integration:
- *  - Das Modul greift direkt auf die IMU-Werte aus @c HAL::Sensor zu
- *    (@c getPitch() , @c getYawRate() ).
- *  - Die berechneten Motorgeschwindigkeiten werden an @c HAL::Motor::setSpeed()
- *    übergeben.
- *  - Die Funktion @c update() ist nicht-blockierend und für den zyklischen
- *    Aufruf in der Hauptschleife ( @c loop() ) vorgesehen.
+ * @author     Jan Unger
+ * @version    1.4.0 (Final Phase 1)
+ * @date       2025-11-25
  */
 
 #include "logic/DriveAssistant.h"
 #include "hal/Motor.h"
 #include "hal/Sensor.h"
+#include "logic/PidController.h"
 #include <Arduino.h>
 
 namespace Logic::DriveAssistant {
 
-/**
- * @brief Proportional-Verstärkung für die Yaw-Regelung.
- *
- * @details
- * Bestimmt, wie stark der Assistent auf eine gemessene Gierrate reagiert.
- * - Kleine Werte => sanftes Gegenlenken.
- * - Große Werte  => aggressiver Eingriff, potentiell oszillierendes Verhalten.
- */
-constexpr float KP_YAW = 2.0f; // Sanftes Gegensteuern
+// ==========================================================================
+// 1. REGLER-KONFIGURATION (TUNING)
+// ==========================================================================
 
 /**
- * @brief Totzone für die Gierrate in °/s.
+ * @brief   PID-Koeffizienten für die Gierraten-Stabilisierung.
  *
  * @details
- * Gierraten mit einem Betrag kleiner als @c DEADZONE_DPS werden als 0
- * interpretiert, um Messrauschen der IMU zu unterdrücken und unnötiges
- * „Hin- und Herlenken“ zu vermeiden.
+ * Konfiguration für "Soft-Response" um Oszillationen (Zittern) zu vermeiden.
+ * - $K_p = 0.6$: Sanfte proportionale Gegenreaktion.
+ * - $K_i = 0.0$: Deaktiviert, um "Integral Windup" (Drift) zu verhindern.
+ * - $K_d = 0.0$: Deaktiviert, um Rauschverstärkung ("Derivative Kick") bei
+ * Vibrationen zu meiden.
  */
-constexpr float DEADZONE_DPS = 3.0f; // Ignoriert kleines Rauschen besser
+static Logic::PidController yawPid(0.6f, 0.0f, 0.0f);
 
 /**
- * @brief Maximal zulässiger Pitch-Winkel in °.
+ * @brief   Schwellenwert für Signal-Rausch-Unterdrückung.
+ * @unit    Grad pro Sekunde (°/s)
  *
  * @details
- * Sobald der Betrag von Pitch diesen Wert überschreitet, betrachtet
- * der Assistent die Situation als unsicher (z. B. Kippgefahr) und
- * meldet dies über den Rückgabewert von @c update() .
+ * Gyroskope rauschen minimal, auch im Stillstand. Werte unterhalb dieses Limits
+ * werden als "0.0" interpretiert, um unnötige Regel-Eingriffe zu verhindern.
  *
- * @note
- *  - Typischer Wert im Fahrbetrieb: ~35–45°.
- *  - Für Tests mit aufgebocktem Rover (Räder frei) kann der Wert
- *    höher gewählt werden (z. B. 90°).
+ * @hardware MPU6050 Rauschverhalten
  */
-constexpr float MAX_PITCH_DEG = 45.0f; // 90° für Test aufgebockt - Räder frei!
+constexpr float DEADZONE_DPS = 0.3f;
 
 /**
- * @brief Initialisiert den DriveAssistant.
+ * @brief   Statischer Geradeauslauf-Ausgleich (Feed-Forward Bias).
  *
  * @details
- * Aktuell ist keine explizite Initialisierung notwendig; die Funktion ist
- * als Erweiterungshaken vorgesehen (z. B. Reset interner Zustände).
+ * Dient der Kompensation mechanischer Asymmetrien (z.B. linker Motor läuft
+ * schwergängiger als rechter).
  *
- * @note
- * Sollte einmalig im @c setup() der Anwendung aufgerufen werden.
+ * **Wirkungsweise:**
+ * - Positiver Wert: Reduziert Links, erhöht Rechts -> Steuert nach LINKS.
+ * - Negativer Wert: Erhöht Links, reduziert Rechts -> Steuert nach RECHTS.
+ *
+ * @note    Wurde empirisch auf 5 ermittelt (Rover zog leicht nach rechts).
  */
-void init() {}
+constexpr int BIAS_TRIM = 5;
 
 /**
- * @brief Aktualisiert Spurhalte- und Kippschutzlogik und steuert die Motoren.
- *
- * @details
- * Ablauf pro Aufruf:
- *  1. Sensorabfrage:
- *     - @c pitch  = HAL::Sensor::getPitch()
- *     - @c yawRate = HAL::Sensor::getYawRate()
- *  2. Kippschutz:
- *     - Wenn |pitch| > @c MAX_PITCH_DEG → Sicherheitsverletzung;
- *       Funktion liefert @c false zurück (Aufrufer kann Not-Aus auslösen).
- *  3. Driftbestimmung:
- *     - @c drift = -yawRate (Vorzeichenkonvention gemäß Tests).
- *     - Werte innerhalb der Totzone (@c DEADZONE_DPS) werden auf 0 gesetzt.
- *  4. P-Regler:
- *     - @c correction = drift * KP_YAW
- *     - Das Vorzeichen der Korrektur wird so auf beide Motoren verteilt,
- *       dass dem Drift entgegengewirkt wird:
- *         - linker Motor  = baseSpeed - correction
- *         - rechter Motor = baseSpeed + correction
- *  5. Sättigung:
- *     - Motorwerte werden auf [-255, 255] begrenzt.
- *  6. Ausgabe:
- *     - In ~4 Hz werden Debug-Informationen (Status, Gierrate, Motorwerte)
- *       auf die serielle Schnittstelle ausgegeben.
- *
- * @param baseSpeed Basisgeschwindigkeit (PWM) für beide Motoren im Bereich
- *                  0–255. Von dieser Basis aus wird die Lenk-Korrektur
- *                  nach links/rechts addiert bzw. subtrahiert.
- *
- * @retval true   Wenn die Neigung innerhalb des sicheren Bereichs liegt
- *                und die Motoren entsprechend angesteuert wurden.
- * @retval false  Wenn der Pitch-Grenzwert überschritten wurde (Kippgefahr).
- *                In diesem Fall werden keine Motorbefehle mehr verändert;
- *                der Aufrufer ist für den Not-Stopp zuständig.
+ * @brief   Sicherheits-Grenzwert für die Neigung.
+ * @safety  Verhindert Überschläge bei Rampenfahrten.
  */
+constexpr float MAX_PITCH_DEG = 45.0f;
+
+// ==========================================================================
+// 2. INTERNE ZUSTANDSVARIABLEN
+// ==========================================================================
+
+static unsigned long lastTime = 0; // Zeitstempel für Delta-t Berechnung
+
+// ==========================================================================
+// 3. IMPLEMENTIERUNG
+// ==========================================================================
+
+void init() {
+    yawPid.reset();
+    lastTime = millis();
+}
+
 bool update(uint8_t baseSpeed) {
+    unsigned long now = millis();
+
+    // A. Zeitbasis (Delta t) berechnen
+    // Nötig für korrekte physikalische Einheiten im Regler (falls I/D genutzt).
+    float dt = (now - lastTime) / 1000.0f;
+    lastTime = now;
+
+    // Schutz gegen Zeitsprünge (z.B. bei Debugging-Pausen)
+    if (dt > 0.1f || dt <= 0.0f) {
+        dt = 0.0f;
+    }
+
+    // B. Sensor-Fusion Abfrage
     float pitch = HAL::Sensor::getPitch();
     float yawRate = HAL::Sensor::getYawRate();
 
-    // 1. Kipp-Schutz
+    // C. Sicherheits-Check (Safety Layer)
     if (abs(pitch) > MAX_PITCH_DEG) {
+        // Rückgabe false signalisiert der Main-Loop: "Unsicherer Zustand!"
         return false;
     }
 
-    // 2. Drift berechnen (Vorzeichenkonvention aus Tests)
-    float drift = -yawRate;
-    if (abs(drift) < DEADZONE_DPS)
-        drift = 0.0f;
+    // D. Regelungs-Logik
+    float correction = 0.0f;
 
-    // 3. Regelung (P-Regler auf Gierrate)
-    float correction = drift * KP_YAW;
+    // Deadzone-Filterung: Nur regeln, wenn Bewegung > Rauschen
+    if (abs(yawRate) > DEADZONE_DPS) {
+        // Sollwert: 0.0°/s (Keine Drehung)
+        // Istwert:  yawRate (Aktuelle Drehung)
+        correction = yawPid.compute(0.0f, yawRate, dt);
+    } else {
+        // WICHTIG: Reset im Ruhezustand
+        // Verhindert, dass der Regler "Geisterfehler" aus der Vergangenheit
+        // speichert, wenn der Rover eigentlich geradeaus fährt.
+        yawPid.reset();
+        correction = 0.0f;
+    }
 
-    // Wir tauschen die Vorzeichen bei correction!
-    int speedL = static_cast<int>(baseSpeed) - static_cast<int>(correction);
-    int speedR = static_cast<int>(baseSpeed) + static_cast<int>(correction);
+    // E. Aktuator-Mixing (Output Stage)
+    // Die finale Geschwindigkeit setzt sich additiv zusammen:
+    // $$ v_{out} = v_{basis} \pm (u_{pid} + u_{bias}) $$
 
-    // Sättigung der Werte auf den zulässigen Bereich
+    // Bias-Logik: Ein positiver BIAS_TRIM (5) bedeutet, wir wollen nach LINKS
+    // korrigieren. Dafür muss Rechts schneller (+) und Links langsamer (-)
+    // werden.
+    int speedL =
+        static_cast<int>(baseSpeed) - static_cast<int>(correction) - BIAS_TRIM;
+    int speedR =
+        static_cast<int>(baseSpeed) + static_cast<int>(correction) + BIAS_TRIM;
+
+    // Hardware-Schutz: Werte auf zulässigen PWM-Bereich begrenzen
     speedL = constrain(speedL, -255, 255);
     speedR = constrain(speedR, -255, 255);
 
     HAL::Motor::setSpeed(speedL, speedR);
 
-    // 4. AUSGABE (Visualisierung)
+    // F. Telemetrie (Debug)
+    // Ausgabe auf 5Hz limitiert, um den Bus nicht zu fluten
     static unsigned long lastDebug = 0;
-    if (millis() - lastDebug > 250) { // 4x pro Sekunde
-        lastDebug = millis();
-
-        Serial.print(F("DA: Gier="));
-        Serial.print(yawRate, 1);
-        Serial.print(F("°/s "));
-
-        if (drift == 0.0f) {
-            Serial.print(F("[GERADEAUS]      "));
-        } else if (correction > 0) {
-            // Correction > 0 bedeutet: linker Motor schneller -> Rechtskurve.
-            // Das tun wir, wenn Drift negativ war (Rover zog nach links).
-            Serial.print(F("[LENKE RECHTS ->]"));
-        } else {
-            Serial.print(F("[<- LENKE LINKS] "));
-        }
-
-        Serial.print(F(" | Motor L:"));
+    if (now - lastDebug > 200) {
+        lastDebug = now;
+        Serial.print(F("Gier:"));
+        Serial.print(yawRate, 2);
+        Serial.print(F(" | Bias:"));
+        Serial.print(BIAS_TRIM);
+        Serial.print(F(" -> L:"));
         Serial.print(speedL);
         Serial.print(F(" R:"));
         Serial.println(speedR);
     }
 
-    return true;
+    return true; // System stabil
 }
 
 } // namespace Logic::DriveAssistant

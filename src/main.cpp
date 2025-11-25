@@ -1,22 +1,28 @@
 /**
  * @file    main.cpp
- * @brief   Autonomer Modus: Geradeausfahrt mit reaktiver Hindernisvermeidung.
+ * @brief   Einstiegspunkt für Phase 1: Präzisions-Fahrt und Hindernis-Wende.
  * @author  Jan Unger
- * @version 1.1.0
+ * @version 1.2.0 (Final Phase 1: PID + Inertia-Kompensation)
  * @date    2025-11-25
  *
  * @details
- * Dieses Modul implementiert die High-Level-Logik für den autonomen Betrieb.
- * Es fungiert als Mittler zwischen der HAL (Hardware Abstraction Layer) und
- * der Entscheidungslogik.
+ * Dieses Hauptprogramm demonstriert die Fähigkeiten der Schichtarchitektur.
+ * Es realisiert eine autonome "Cruise"-Funktion mit Hindernisvermeidung.
  *
- * **Verhaltensmuster:**
- * 1. **Cruise:** PID-stabilisierte Geradeausfahrt.
- * 2. **Detect:** Ultraschall-Erkennung (< 15cm).
- * 3. **React:** Blockierende 180°-Wende (Dead Reckoning über Gyro).
+ * **Architektur-Einordnung (Didaktik):**
+ * - **App Layer (Hier):** Die "Exekutive". Sie trifft High-Level Entscheidungen
+ * (z.B. "Hindernis da -> Wende einleiten").
+ * - **Logic Layer (DriveAssistant):** Das "Kleinhirn". Es kümmert sich um die
+ * motorische Umsetzung und Stabilisierung (PID-Regelung).
+ * - **HAL (Sensor/Motor):** Die "Nervenbahnen". Zugriff auf Hardware.
+ *
+ * **Ablaufdiagramm:**
+ * 1. Sensoren lesen (IMU, Ultraschall).
+ * 2. Ist Hindernis < 15cm?
+ * - JA: Führe 180° Wende aus (Open Loop Sequenz).
+ * - NEIN: Fahre geradeaus (Closed Loop PID-Regelung).
  *
  * @platform ESP32S3 / GalaxyRVR
- * @dependency HAL::Sensor, HAL::Motor, Logic::DriveAssistant
  */
 
 #include "Config.h"
@@ -26,185 +32,199 @@
 #include "logic/DriveAssistant.h"
 #include <Arduino.h>
 
-// --- EINSTELLUNGEN ---
+// ==========================================================================
+// KONFIGURATION
+// ==========================================================================
 
 /**
- * @brief   Sollgeschwindigkeit für die Geradeausfahrt.
+ * @brief   Sollgeschwindigkeit für die Geradeausfahrt (Cruise).
  * @unit    PWM-Duty-Cycle (0–255)
- *
- * @note    Werte unter 40 reichen oft nicht, um die Haftreibung der Getriebe
- * zu überwinden (Deadband).
+ * * @note    **Warum nicht 255?**
+ * Der PID-Regler braucht "Headroom" (Regelreserve). Wenn ein Motor schon
+ * auf 100% (255) läuft, kann er nicht mehr beschleunigt werden, um eine
+ * Drehung auszugleichen. Er könnte nur bremsen. Ein Wert um 100 lässt
+ * Spielraum in beide Richtungen.
  */
 constexpr uint8_t CRUISE_SPEED = 100;
 
 /**
- * @brief   Drehgeschwindigkeit für Manöver auf der Stelle.
- * @unit    PWM-Duty-Cycle (0–255)
- *
- * @warning Zu hohe Werte (>120) führen auf glattem Boden zu massivem Schlupf,
- * wodurch die IMU-Winkelberechnung ungenau wird.
+ * @brief   Drehgeschwindigkeit für Pivot-Turn (Wenden auf der Stelle).
+ * @safety  Nicht zu schnell wählen, um Überschwingen zu minimieren.
  */
 constexpr uint8_t TURN_SPEED = 80;
 
 /**
- * @brief   Sicherheitsabstand für die Notbremsung/Wende.
+ * @brief   Auslöse-Distanz für Hindernisse.
  * @unit    Zentimeter (cm)
  */
 constexpr float STOP_DISTANCE_CM = 15.0f;
 
+// ==========================================================================
+// HILFSFUNKTIONEN
+// ==========================================================================
+
 /**
- * @brief   Führt eine überwachte 180°-Wende an Ort und Stelle aus (Pivot Turn).
+ * @brief   Führt eine blockierende 180°-Wende aus (Dead Reckoning).
  *
  * @details
- * Diese Funktion blockiert den Haupt-Loop (`blocking call`), bis das Manöver
- * abgeschlossen ist. Sie nutzt eine zeit-integrierte Gierraten-Messung
- * (Dead Reckoning), um den Drehwinkel zu bestimmen.
+ * Diese Funktion nutzt das Gyroskop, um eine definierte Drehung auszuführen.
  *
- * **Ablauf:**
- * 1. Stoppen der Motoren & Wartezeit (Stabilisierung IMU).
- * 2. Gegenläufiges Ansteuern der Ketten (Links - / Rechts +).
- * 3. Integration: \f$ \theta = \sum (\omega_{gyro} \cdot \Delta t) \f$
- * 4. Abbruch bei \f$ \theta \geq 180^\circ \f$ oder Kippgefahr.
+ * **Mathematisches Prinzip (Integration):**
+ * Der Winkel $\theta$ wird durch Aufsummieren der Drehgeschwindigkeit $\omega$
+ * über die Zeit $t$ berechnet:
+ * $$ \theta = \int \omega \, dt \approx \sum (\text{yawRate} \cdot \Delta t) $$
  *
- * @hardware
- * - **Aktoren:** Motoren (PWM-Steuerung)
- * - **Sensoren:** IMU (Gyroskop Z-Achse für Gierrate, Accelerometer für Pitch)
+ * **Physikalische Korrektur (Inertia):**
+ * Motoren stoppen nicht instantan. Das Chassis hat Masse und Schwung.
+ * Daher schalten wir die Motoren bereits bei **177.9°** ab. Der
+ * "Nachlauf" (Coasting) dreht den Rover die restlichen ~2.1 Grad.
  *
- * @safety
- * Die Schleife enthält einen **Not-Aus-Wächter**: Sollte der Rover während
- * der Drehung kippen (`Pitch > 60°`), werden die Motoren sofort abgeschaltet
- * und die Funktion verlassen.
+ * @hardware Gyroskop (Z-Achse)
  */
 void performTurn180() {
-    Serial.println(F("--- WENDE MANOEVER START (180 Grad) ---"));
+    Serial.println(F(">>> MANÖVER: 180° Wende start <<<"));
+
+    // 1. Stoppen für sauberen Ausgangszustand
+    // Wichtig, damit das Integral nicht durch Restbewegung verfälscht wird.
     HAL::Motor::stop();
     delay(500);
 
     float currentAngle = 0.0f;
     unsigned long lastTime = millis();
 
-    // Drehung einleiten (Linksherum: Links Rückwärts, Rechts Vorwärts)
+    // 2. Drehung einleiten (Gegenläufige Räder -> Drehen auf der Stelle)
     HAL::Motor::setSpeed(-TURN_SPEED, TURN_SPEED);
 
-    // Schleife: Solange drehen, bis 180 Grad erreicht sind
-    while (abs(currentAngle) < 180.0f) {
-        // 1. Sensoren wach halten (Polling)
+    // 3. Regelschleife für den Turn
+    // Abbruchbedingung inkludiert Trägheits-Kompensation (177.9 statt 180.0)
+    while (abs(currentAngle) < 177.9f) {
+
+        // A. Sensoren aktualisieren (Polling)
         HAL::Sensor::imuUpdate();
 
-        // 2. Zeit-Delta berechnen
+        // B. Zeitdifferenz messen (dt) für Integration
         unsigned long now = millis();
-        float dt = (now - lastTime) / 1000.0f; // ms -> s
+        float dt = (now - lastTime) / 1000.0f; // Konvertierung ms -> Sekunden
         lastTime = now;
 
-        // 3. Winkel integrieren (Rate * Zeit = Winkeländerung)
-        float rate = HAL::Sensor::getYawRate(); // Einheit: °/s
+        // C. Numerische Integration: Winkel += Rate * Zeit
+        float rate = HAL::Sensor::getYawRate();
         currentAngle += rate * dt;
 
-        // Debug-Ausgabe alle 100ms (Vermeidung von Serial-Spam)
-        static unsigned long lastPrint = 0;
-        if (now - lastPrint > 100) {
-            lastPrint = now;
-            Serial.print(F("Wende: "));
-            Serial.print(abs(currentAngle), 0);
-            Serial.println(F(" / 180 Grad"));
-        }
-
-        // @safety Not-Aus bei Kippen
+        // D. Sicherheit: Kippschutz (Safety Guard)
+        // Sollte der Rover während der Drehung auf eine Kante fahren und
+        // kippen:
         if (abs(HAL::Sensor::getPitch()) > 60.0f) {
             HAL::Motor::stop();
-            Serial.println(F("ABBRUCH: Kippgefahr erkannt!"));
+            Serial.println(F("!!! ABBRUCH: Kippgefahr während Wende !!!"));
             return;
         }
     }
 
-    HAL::Motor::stop();
-    Serial.println(F("--- WENDE ABGESCHLOSSEN ---"));
-    delay(1000); // Kurz orientieren vor Weiterfahrt
+    // 4. Abschluss
+    HAL::Motor::stop(); // Strom weg -> Rover rollt aus (Nachlauf)
+    Serial.println(F(">>> MANÖVER: Wende beendet <<<"));
 
-    // Assistenten resetten (Integrator-Windup löschen)
+    // Kurze Orientierungspause für das System
+    delay(1000);
+
+    // WICHTIG: PID-Regler resetten!
+    // Der Regler in DriveAssistant "denkt" noch, er müsste geradeaus fahren.
+    // Die 180°-Drehung würde er als massiven Fehler interpretieren.
+    // Ein Reset löscht das Gedächtnis des Reglers.
     Logic::DriveAssistant::init();
 }
 
-/**
- * @brief   Initialisierung der Rover-Peripherie.
- *
- * @details
- * Initialisiert I2C-Bus, Motortreiber und Sensoren. Führt zwingend eine
- * Gyro-Kalibrierung durch.
- *
- * @warning Während der Ausführung (ca. 3s) darf der Rover **nicht bewegt**
- * werden, da sonst der Gyro-Offset falsch berechnet wird (Drift!).
- */
+// ==========================================================================
+// ARDUINO LIFECYCLE
+// ==========================================================================
+
 void setup() {
     Serial.begin(115200);
-    Serial.println(F("--- GALAXY RVR: AUTONOMER MODUS + WENDE ---"));
+    delay(1000); // Warten auf USB-Stack (bei ESP32-S3 wichtig)
 
+    Serial.println(F("=== GALAXY RVR: PHASE 1 START ==="));
+
+    // 1. Hardware initialisieren (HAL Layer)
     HAL::Sensor::init();
     HAL::Motor::init();
     HAL::Actuator::init();
+
+    // 2. Logik initialisieren (Logic Layer)
     Logic::DriveAssistant::init();
 
-    Serial.println(F("IMU: Kalibrierung... (Stillhalten!)"));
-    HAL::Actuator::setCameraAngle(90);
-    HAL::Sensor::imuCalibrate(50); // 50 Samples für Mittelwert
-    Serial.println(F("IMU: Bereit."));
+    // 3. Kalibrierung (WICHTIG!)
+    // Das Gyroskop misst "0" nur relativ. Der Offset muss im Stillstand
+    // ermittelt werden.
+    Serial.println(F("IMU: Kalibriere Gyro... BITTE NICHT BEWEGEN!"));
+    HAL::Actuator::setCameraAngle(90); // Kamera neutral ausrichten
 
-    Serial.println(F("START IN 3 SEKUNDEN..."));
+    // 100 Samples reichen für eine grobe Kalibrierung beim Start
+    HAL::Sensor::imuCalibrate(100);
+    Serial.println(F("IMU: Kalibrierung abgeschlossen."));
+
+    Serial.println(F("--> GO in 3 Sekunden..."));
     delay(3000);
 }
 
-/**
- * @brief   Zentrale Steuerschleife (Main Loop).
- *
- * @details
- * Frequenz: Bestimmt durch Zykluszeit der Sensor-Updates und Loop-Overhead.
- *
- * **Zustandsautomat:**
- * - **Prüfung:** Ultraschall-Distanz messen.
- * - **Fall A (Hindernis):** Aufruf von `performTurn180()`.
- * - **Fall B (Frei):** Aufruf von `Logic::DriveAssistant::update()`.
- * - **Global Check:** Batterieüberwachung (5s Intervall) und Neigungsschutz.
- *
- * @safety
- * Ein "Dead-Loop" (`while(true)`) wird betreten, wenn der DriveAssistant
- * eine unsichere Fahrzeuglage meldet. Ein Hardware-Reset ist zum Neustart
- * nötig.
- */
 void loop() {
-    // Sensoren immer aktualisieren für frische Daten
+    // 1. Globale Sensor-Updates
+    // Muss zwingend einmal pro Loop-Zyklus passieren, damit Logic-Klassen
+    // auf aktuelle Daten zugreifen können.
     HAL::Sensor::imuUpdate();
     HAL::Sensor::ultrasonicUpdate();
 
+    // 2. Umgebungs-Check (Perzeption)
     float distance = HAL::Sensor::getUltrasonicDistance();
 
-    // --- HINDERNIS-LOGIK ---
+    // Gültige Distanzmessung (>0) und Hindernis innerhalb der Warnzone?
     if (distance > 0.1f && distance < STOP_DISTANCE_CM) {
-        // @todo Auslagern in eigene State-Machine Funktion?
-        Serial.print(F("HINDERNIS BEI "));
-        Serial.print(distance, 0);
-        Serial.println(F(" cm -> START WENDE!"));
+
+        // --- ZUSTAND: HINDERNISVERMEIDUNG ---
+        Serial.print(F("Hindernis erkannt: "));
+        Serial.print(distance);
+        Serial.println(F(" cm"));
 
         performTurn180();
+
     } else {
-        // --- FREIE FAHRT ---
+
+        // --- ZUSTAND: CRUISE (PID GEREGELT) ---
+        // update() liefert false, wenn der Rover kippt (Not-Halt-Bedingung)
         bool safe = Logic::DriveAssistant::update(CRUISE_SPEED);
 
         if (!safe) {
             HAL::Motor::stop();
-            Serial.println(F("NOT-AUS: Rover gekippt!"));
-            // Sicherer Zustand: Endlosschleife
+            Serial.println(F("!!! NOT-AUS: Kritische Neigung !!!"));
+
+            // Fehlerzustand: Endlosschleife mit visuellem Signal
+            // (Kamera-Wackeln)
             while (true) {
-                delay(100);
+                HAL::Actuator::setCameraAngle(45); // Signal: "Ich habe Angst"
+                delay(200);
+                HAL::Actuator::setCameraAngle(135);
+                delay(200);
             }
         }
     }
 
-    // Batterie-Check alle 5s (Non-blocking)
-    static unsigned long lastBat = 0;
-    if (millis() - lastBat > 5000) {
-        lastBat = millis();
-        Serial.print(F("[Bat] "));
-        Serial.print(HAL::Sensor::getBatteryVoltage());
+    // Optional: Zyklischer Batterie-Check (Non-blocking, alle 5s)
+    static unsigned long lastBatCheck = 0;
+    if (millis() - lastBatCheck > 5000) {
+        lastBatCheck = millis();
+        float voltage = HAL::Sensor::getBatteryVoltage();
+
+        // Warnung bei niedriger Batterie (< 7.0V bei 2S LiPo/LiIon)
+        if (voltage < 7.0f) {
+            Serial.print(F("WARNUNG: Batterie niedrig: "));
+        } else {
+            Serial.print(F("Info: Batterie: "));
+        }
+        Serial.print(voltage);
         Serial.println(F(" V"));
     }
+
+    // Kurzes Delay entlastet die CPU und gibt Sensoren Zeit zum Atmen
+    // (IMU Update-Rate beachten!)
+    delay(10);
 }

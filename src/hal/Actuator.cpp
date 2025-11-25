@@ -1,63 +1,48 @@
 /**
  * @file       Actuator.cpp
- * @brief      Implementierung der Aktorik-HAL (Servo + RGB-LEDs) für den Rover.
+ * @brief      Implementierung der Aktorik-HAL (Licht & Zusatz-Bewegung).
  *
  * @details
- * Dieses Modul kapselt alle Aktor-Funktionen, die NICHT direkt Antrieb/Motor
- * betreffen:
- *  - Kameraservo (Neigung),
- *  - RGB-LED-Leiste (Status-/Diagnoseanzeige).
+ * Dieses Modul kümmert sich um alles, was sich bewegt oder leuchtet,
+ * aber NICHT zum Antriebsstrang gehört.
  *
- * Rolle im System:
- *  - Stellt eine einheitliche Schnittstelle für die Anwendung bereit
- *    (z. B. Hardware-Diagnose, autonome Fahrmodi).
- *  - Versteckt Bibliotheksdetails ( @c Servo , @c SoftPWM ) und
- *    Pin-Zuordnungen ( @c Pin::Servo , @c Pin::RGB_* ).
+ * Architektur-Einordnung & Didaktik:
+ * - **Abstraktion:** Die App-Ebene ruft `setCameraAngle(90)` auf, ohne zu
+ * wissen, dass dahinter eine PWM-Generierung via `Servo.h` an Pin 6 steckt.
+ * - **Sicherheit:** Software-Limits ("Clamping") schützen die Hardware
+ * vor mechanischer Zerstörung (Servo auf Anschlag).
+ * - **Concurrency:** Test-Funktionen sind "nicht-blockierend" implementiert,
+ * damit der Hauptprozessor nicht in einem `delay()` gefangen ist.
+ *
+ * @dependency SoftPWM (für RGB LEDs an beliebigen Pins)
+ * @dependency Servo   (Standard Arduino Lib)
  */
 
-#include "Actuator.h"
+#include "hal/Actuator.h"
 #include "Pins.h"
 #include <Arduino.h>
 #include <Servo.h>
 #include <SoftPWM.h>
 
-// Servo-Instanz für Kamera
+// ==========================================================================
+// INTERNE HELPER (Anonyme Namespace -> "Private" im File-Scope)
+// ==========================================================================
 namespace {
 
 /**
  * @brief Servo-Objekt für die Kameraneigung.
- *
- * @details
- * Wird ausschließlich in dieser Übersetzungseinheit verwendet und über
- * @c setCameraAngle() bzw. @c servoTest() angesteuert.
+ * @note  Global in dieser Datei, aber unsichtbar für andere Module.
  */
-Servo testServo;
+Servo cameraServo;
 
-// interne Konstanten nur in dieser Datei sichtbar
-
-/**
- * @brief Untere sichere Grenze für den Kameraserwo-Winkel [°].
- *
- * @details
- * Verhindert mechanische Überlastung durch zu starke Abwärtsbewegung.
- */
+// --- Mechanische Sicherheitsgrenzen ---
+// Der Servo könnte technisch 0-180°, aber bei <20° oder >140°
+// stößt die Kamera-Halterung gegen das Chassis.
 constexpr int SERVO_MIN_SAFE = 20;
-
-/**
- * @brief Obere sichere Grenze für den Kameraserwo-Winkel [°].
- *
- * @details
- * Verhindert mechanische Überlastung durch zu starke Aufwärtsbewegung.
- */
 constexpr int SERVO_MAX_SAFE = 140;
 
-/**
- * @brief Standard-Helligkeit für RGB-Test (ca. 30 % von 255).
- *
- * @details
- * Wird in @c rgbTest() für alle drei Grundfarben verwendet, um ein
- * gut sichtbares, aber nicht blendendes Testsignal zu erzeugen.
- */
+// --- Optische Einstellungen ---
+// 30% Helligkeit reicht für Tests völlig aus und spart Strom.
 constexpr uint8_t RGB_BRIGHTNESS = 77;
 
 } // namespace
@@ -65,159 +50,135 @@ constexpr uint8_t RGB_BRIGHTNESS = 77;
 namespace HAL::Actuator {
 
 /**
- * @brief Initialisiert alle Aktoren (Servo + RGB-LEDs).
- *
- * @details
- * - Startet SoftPWM (für RGB-Leiste und ggf. Motor-Pins),
- * - hängt den Kameraserwo an den Servo-Pin an und fährt ihn in Neutralstellung
- *   (90°),
- * - konfiguriert alle RGB-Pins als SoftPWM-Ausgänge ohne Fade-Effekte
- *   und setzt sie initial auf 0 (aus).
- *
- * @note
- * Diese Funktion sollte einmalig im @c setup() der Anwendung vor allen
- * anderen Aktor-Funktionen aufgerufen werden.
+ * @brief Initialisierung der Peripherie.
  */
 void init() {
+    // 1. SoftPWM starten (Timer-basiertes PWM auf beliebigen Pins)
     SoftPWMBegin();
 
-    // Servo Initialisierung (Neutralstellung)
-    testServo.attach(Pin::Servo);
-    testServo.write(90);
+    // 2. Servo verbinden und in sichere Startposition fahren
+    cameraServo.attach(Pin::Servo);
+    cameraServo.write(90); // 90° = Mitte/Geradeaus
 
-    // RGB-Pins: SoftPWM ohne Fade, initial aus
+    // 3. RGB-LEDs konfigurieren
+    // FadeTime = 0 bedeutet sofortiges Umschalten (hartes Blinken)
     SoftPWMSetFadeTime(Pin::RGB_R, 0, 0);
     SoftPWMSetFadeTime(Pin::RGB_G, 0, 0);
     SoftPWMSetFadeTime(Pin::RGB_B, 0, 0);
+
+    // Initial alles aus
     SoftPWMSet(Pin::RGB_R, 0);
     SoftPWMSet(Pin::RGB_G, 0);
     SoftPWMSet(Pin::RGB_B, 0);
 }
 
 /**
- * @brief Nicht-blockierender RGB-Testlauf (Rot → Grün → Blau).
+ * @brief Setzt den Kamerawinkel mit mechanischem Schutz.
  *
  * @details
- * - Wechselt im Abstand von 1 s zeilenweise durch die drei Grundfarben:
- *   0: Rot, 1: Grün, 2: Blau.
- * - Nutzt @c RGB_BRIGHTNESS als PWM-Wert (~30 % Helligkeit).
- * - Gibt für jede Phase eine kurze Statusmeldung via Serial aus.
+ * Implementiert "Clamping": Werte außerhalb des sicheren Bereichs
+ * werden auf die Grenzen gezwungen.
+ */
+void setCameraAngle(int angleDeg) {
+    // Schutzlogik (Clamping)
+    if (angleDeg < SERVO_MIN_SAFE) {
+        angleDeg = SERVO_MIN_SAFE;
+    } else if (angleDeg > SERVO_MAX_SAFE) {
+        angleDeg = SERVO_MAX_SAFE;
+    }
+
+    cameraServo.write(angleDeg);
+}
+
+/**
+ * @brief Nicht-blockierender RGB-Test (State Machine).
  *
- * Die Funktion ist nicht-blockierend:
- *  - Bei Aufruf häufiger als alle 1000 ms wird sofort zurückgegeben,
- *  - Es werden keine Delays verwendet.
- *
- * @note
- * Eignet sich für Hardware-Diagnosen und visuelles Feedback bei Tests.
+ * @details
+ * Statt `delay(1000)` nutzen wir `millis()`.
+ * Das ermöglicht dem Rover, während des Blinkens weiter Sensoren
+ * zu lesen oder Motoren zu steuern.
  */
 void rgbTest() {
-    // Farbwechsel alle 1000 ms, kein Dauer-Spam in Serial
-    static unsigned long lastChange = 0;
-    static uint8_t colorPhase = 0; // 0 = Rot, 1 = Grün, 2 = Blau
+    static unsigned long lastChange = 0; // "Gedächtnis" für letzte Zeit
+    static uint8_t state = 0;            // 0=Rot, 1=Grün, 2=Blau
 
     unsigned long now = millis();
+
+    // Ist 1 Sekunde vergangen? Wenn nein, sofort zurück (nicht blockieren!)
     if (now - lastChange < 1000UL) {
         return;
     }
     lastChange = now;
 
-    switch (colorPhase) {
-    case 0:
-        Serial.println(F("RGB Test: ROT (30% Helligkeit)"));
+    // Zustandsautomat für die Farben
+    switch (state) {
+    case 0: // ROT
+        Serial.println(F("[Test] RGB: Rot"));
         SoftPWMSet(Pin::RGB_R, RGB_BRIGHTNESS);
         SoftPWMSet(Pin::RGB_G, 0);
         SoftPWMSet(Pin::RGB_B, 0);
         break;
-    case 1:
-        Serial.println(F("RGB Test: GRUEN (30% Helligkeit)"));
+    case 1: // GRÜN
+        Serial.println(F("[Test] RGB: Grün"));
         SoftPWMSet(Pin::RGB_R, 0);
         SoftPWMSet(Pin::RGB_G, RGB_BRIGHTNESS);
         SoftPWMSet(Pin::RGB_B, 0);
         break;
-    default:
-        Serial.println(F("RGB Test: BLAU (30% Helligkeit)"));
+    case 2: // BLAU
+        Serial.println(F("[Test] RGB: Blau"));
         SoftPWMSet(Pin::RGB_R, 0);
         SoftPWMSet(Pin::RGB_G, 0);
         SoftPWMSet(Pin::RGB_B, RGB_BRIGHTNESS);
         break;
     }
 
-    colorPhase = (colorPhase + 1) % 3;
+    // Nächster Zustand (Rotlieren 0 -> 1 -> 2 -> 0 ...)
+    state = (state + 1) % 3;
 }
 
 /**
- * @brief Setzt den Kameraserwo auf einen gewünschten Winkel.
+ * @brief Nicht-blockierender Servo-Sweep.
  *
  * @details
- * - Erwarteter Wertebereich: 0–180° (Servo-Bibliothek),
- * - tatsächlich verwendeter Bereich:
- *   - @c SERVO_MIN_SAFE  ≤ angleDeg ≤  @c SERVO_MAX_SAFE.
- *
- * Liegt @p angleDeg außerhalb des sicheren Bereichs, wird der Wert
- * auf die nächste Grenze geklemmt (Clamping), bevor er an den Servo
- * übergeben wird.
- *
- * @param angleDeg Zielwinkel in Grad (Sollwert), wird intern begrenzt.
- */
-void setCameraAngle(int angleDeg) {
-    // Clamping auf sicheren Bereich
-    if (angleDeg < SERVO_MIN_SAFE) {
-        angleDeg = SERVO_MIN_SAFE;
-    }
-    if (angleDeg > SERVO_MAX_SAFE) {
-        angleDeg = SERVO_MAX_SAFE;
-    }
-    testServo.write(angleDeg);
-}
-
-/**
- * @brief Nicht-blockierender Test-Sweep des Kameraserwomechanismus.
- *
- * @details
- * - Fährt den Kameraserwo in 2°-Schritten zwischen @c SERVO_MIN_SAFE
- *   und @c SERVO_MAX_SAFE hin und her (Ping-Pong-Bewegung).
- * - Nutzt ein Schrittintervall von 40 ms für eine sanfte Bewegung.
- * - Gibt den aktuellen Winkel nur aus, wenn sich dieser mindestens um 10°
- *   gegenüber der letzten Logmeldung geändert hat, um Serial-Spam zu vermeiden.
- *
- * Ablauf:
- *  - interne Zustände (@c angle , @c dir , @c lastLoggedAngle ) werden statisch
- *    gespeichert, um bei jedem Aufruf dort weiterzumachen, wo der vorherige
- *    Aufruf aufgehört hat,
- *  - keine blockierenden @c delay() -Aufrufe, geeignet für Einsatz in
- *    Diagnoseloops.
+ * Bewegt den Servo langsam hin und her ("Winken").
+ * Auch hier: Kein `delay()`, sondern kleine Schritte alle 40ms.
  */
 void servoTest() {
-    // Nicht-blockierender Sweep zwischen SERVO_MIN_SAFE und SERVO_MAX_SAFE
     static unsigned long lastMove = 0;
     static int angle = 90;
-    static int dir = 1;                 // +1 Richtung MAX, -1 Richtung MIN
-    static int lastLoggedAngle = -1000; // für reduzierte Serial-Ausgabe
+    static int direction = 1; // +1 = hoch, -1 = runter
+
+    // Logging-Filter: Nur Änderungen ausgeben, um Serial nicht zu fluten
+    static int lastLoggedAngle = -1;
 
     unsigned long now = millis();
-    const unsigned long STEP_INTERVAL_MS = 40UL; // sanftes Bewegen
 
-    if (now - lastMove < STEP_INTERVAL_MS) {
+    // Update-Rate: 40ms (~25 Hz) für flüssige Bewegung
+    if (now - lastMove < 40UL) {
         return;
     }
     lastMove = now;
 
-    angle += dir * 2; // 2°-Schritte
+    // Neuen Winkel berechnen
+    angle += (direction * 2); // 2 Grad pro Schritt
+
+    // Richtungsumkehr an den Grenzen (Ping-Pong)
     if (angle >= SERVO_MAX_SAFE) {
         angle = SERVO_MAX_SAFE;
-        dir = -1;
+        direction = -1; // Rückwärtsgang
     } else if (angle <= SERVO_MIN_SAFE) {
         angle = SERVO_MIN_SAFE;
-        dir = 1;
+        direction = 1; // Vorwärtsgang
     }
 
-    testServo.write(angle);
+    // Hardware ansteuern
+    cameraServo.write(angle);
 
-    // Optionale Diagnoseausgabe: nur loggen, wenn sich der Winkel ≥ 10°
-    // geändert hat.
-    if (lastLoggedAngle < 0 || abs(angle - lastLoggedAngle) >= 10) {
-        Serial.print(F("Servo Test: Winkel = "));
-        Serial.println(angle);
+    // Diagnose-Ausgabe (nur alle 10 Grad)
+    if (abs(angle - lastLoggedAngle) >= 10) {
+        Serial.print(F("[Test] Servo: "));
+        Serial.print(angle);
+        Serial.println(F(" Grad"));
         lastLoggedAngle = angle;
     }
 }

@@ -1,21 +1,20 @@
 /**
  * @file       Motor.h
- * @brief      Schnittstellendefinition (API) für den Motor-Treiber.
+ * @brief      Schnittstelle für den Hardware-Treiber (H-Brücke).
  *
  * @details
- * Dieses Modul stellt die Low-Level-HAL-Schnittstelle zur Ansteuerung
- * der DC-Motoren über eine H-Brücke bereit (Differenzialantrieb).
+ * Dieses Modul bildet die unterste Ebene der Antriebssteuerung (HAL).
  *
- * Aufgaben:
- *  - Konfiguration der Motorpins und Start der (Software-)PWM.
- *  - Setzen von Geschwindigkeit und Drehrichtung für linken/rechten Motor.
- *  - Sofortiger Stopp (Coasting) für Sicherheits- und Diagnosefälle.
- *  - Bereitstellung einer nicht-blockierenden Selbsttest-Sequenz.
+ * Architektur-Einordnung & Didaktik:
+ * - **Open Loop:** Diese Ebene führt Befehle "blind" aus. Sie weiß nicht,
+ * ob der Roboter tatsächlich fährt oder ob er gegen eine Wand drückt.
+ * - **Abstraktion:** Versteckt die Komplexität der SoftPWM-Bibliothek
+ * und der Pin-Manipulationen vor dem Rest des Systems.
+ * - **Sicherheit:** Implementiert die Not-Halt-Funktion `stop()`.
  *
- * Die konkrete Implementierung befindet sich in @c Motor.cpp und nutzt:
- *  - Pinzuordnungen aus @c Pins.h,
- *  - Systemgrenzen aus @c Config.h,
- *  - die SoftPWM-Bibliothek zur PWM-Generierung.
+ * @author     Jan Unger
+ * @version    1.1.0
+ * @date       2025-11-25
  */
 
 #pragma once
@@ -26,98 +25,52 @@
 namespace HAL::Motor {
 
 /**
- * @brief Konfiguriert die GPIO-Pins und startet die PWM-Timer.
+ * @brief Initialisiert die Motor-Hardware.
  *
  * @details
- * - Initialisiert die SoftPWM-Infrastruktur (Timer/Interrupts).
- * - Setzt alle Motorpins in einen definierten, sicheren Grundzustand.
- * - Führt intern einen @c stop() aus, sodass die Motoren zu Beginn
- *   spannungsfrei sind (Coasting).
+ * - Konfiguriert Pins als Ausgänge.
+ * - Startet die SoftPWM-Timer.
+ * - Setzt Motoren in den sicheren Zustand (Stop).
  *
- * @pre
- *  - Muss einmalig im @c setup() aufgerufen werden, bevor andere
- *    Motorfunktionen verwendet werden.
- *  - Die H-Brücke muss gemäß @c Pins.h korrekt verdrahtet sein.
- *
- * @post
- *  - Motoren stehen (PWM = 0, keine Ansteuerung).
+ * @pre Muss einmalig im setup() gerufen werden.
  */
 void init();
 
 /**
- * @brief Setzt Motorgeschwindigkeit und -richtung (Open Loop).
+ * @brief Setzt die Geschwindigkeit (PWM) direkt.
  *
  * @details
- * Interpretiert die Sollwerte als signierte PWM-Kommandos:
- *  - @p speed < 0 : Rückwärtsdrehung,
- *  - @p speed = 0 : Stopp (Coasting),
- *  - @p speed > 0 : Vorwärtsdrehung.
+ * Dies ist der "Gashebel" des Roboters.
  *
- * Die Funktion:
- *  - übernimmt kein Feedback (kein Closed-Loop-Regler),
- *  - begrenzt die Werte intern auf den Bereich
- *    [-Config::SpeedMax, +Config::SpeedMax] (Clamping),
- *  - mappt die abstrakten „links/rechts“-Kommandos auf die physikalischen
- *    H-Brücken-Pins, die in @c Pins.h definiert sind.
+ * @param leftSpeed  Geschwindigkeit Links (-255 bis +255).
+ * @param rightSpeed Geschwindigkeit Rechts (-255 bis +255).
  *
- * @param leftSpeed
- *  Sollgeschwindigkeit für den linken Motor.
- *  Vorzeichenkonvention:
- *   - < 0 rückwärts,
- *   - = 0 Stopp (Coasting),
- *   - > 0 vorwärts.
- *
- * @param rightSpeed
- *  Sollgeschwindigkeit für den rechten Motor.
- *  Gleiche Vorzeichenkonvention wie @p leftSpeed.
- *
- * @note
- *  Die effektive Drehzahl hängt zusätzlich von Versorgungsspannung,
- *  Last, Motorcharakteristik und H-Brücke ab.
+ * @note Werte > 255 oder < -255 werden automatisch auf das Maximum
+ * begrenzt (Clamping gemäß Config::SpeedMax).
  */
 void setSpeed(int leftSpeed, int rightSpeed);
 
 /**
- * @brief Schaltet die Motoren sofort ab.
+ * @brief Not-Halt (Coasting).
  *
  * @details
- * Setzt beide Motorkanäle auf PWM = 0 und delegiert an @c setSpeed(0, 0) .
- * In der aktuellen Implementierung bedeutet dies:
- *  - beide H-Brücken-Ausgänge werden LOW gesetzt,
- *  - die Motoren rollen frei aus (kein aktives elektrisches Bremsen).
+ * Schaltet die Spannung an den Motoren sofort ab.
+ * Der Roboter rollt aus (kein aktives Bremsen).
  *
- * @safety
- * Sollte in Not-Aus-Routinen, bei Kommunikationsverlust oder bei
- * Verletzung von Sicherheitsgrenzen (z. B. Kippwinkel, Hinderniserkennung)
- * aufgerufen werden.
+ * @safety Sollte bei jedem erkannten Fehlerzustand (Kippen, Sensor-Ausfall)
+ * gerufen werden.
  */
 void stop();
 
 /**
- * @brief Nicht-blockierender Motor-Selbsttest.
+ * @brief Diagnose-Funktion: Motor-Selbsttest.
  *
  * @details
- * Wird zyklisch aus @c loop() (z. B. in einer Diagnose-Phase MOTOR_TEST)
- * aufgerufen und durchläuft in 1-s-Schritten folgende Sequenz:
+ * Eine nicht-blockierende Routine, die nacheinander alle Bewegungsrichtungen
+ * abfährt. Dient dazu, Verdrahtungsfehler (z.B. linker Motor dreht falsch
+ * herum) schnell zu finden.
  *
- *  - Schritt 0: Vorwärtsfahrt (beide Motoren vorwärts),
- *  - Schritt 1: Rückwärtsfahrt (beide Motoren rückwärts),
- *  - Schritt 2: Linksdrehung auf der Stelle,
- *  - Schritt 3: Rechtsdrehung auf der Stelle,
- *  - Schritt 4: Stopp (Coasting, verbleibt in diesem Zustand).
- *
- * Eigenschaften:
- *  - Zeitsteuerung über @c millis() (keine blockierenden @c delay() -Aufrufe).
- *  - Log-Ausgabe nur bei Schrittwechsel, um den seriellen Monitor nicht zu
- *    überfluten.
- *  - Für die Testgeschwindigkeit wird intern ein konservativer Anteil
- *    von @c Config::SpeedMax verwendet (z. B. ~20 %).
- *
- * @note
- *  Eignet sich zur Überprüfung von:
- *   - Verkabelung und Drehrichtung der Motoren,
- *   - H-Brücken-Funktion,
- *   - SoftPWM-Konfiguration.
+ * @note Muss zyklisch in der Loop aufgerufen werden.
  */
 void motorTestLogic();
 
