@@ -1,7 +1,7 @@
 ---
 title: "GalaxyRVR Profi – Firmware-Dokumentation"
 file: "README.md"
-version: "1.2.0"
+version: "1.4.0"
 author: "Jan Unger"
 status: "active"
 kanban.board: "Mars Rover"
@@ -60,14 +60,11 @@ Abhängigkeiten verlaufen ausschließlich von oben nach unten
 ### Schicht 2: Logik & Verhalten (Logic Layer)
 
 - **Verzeichnis:** `src/logic/`
-- **Verantwortung:** Reine Algorithmen und Regelungstechnik (plattform-agnostisch).
+- **Verantwortung:** Reine Algorithmen, Regelungstechnik und Odometrie (plattform-agnostisch).
 - **Details:**
-  - Übersetzung von abstrakten Wünschen („Fahre Kurve“) in konkrete Aktorwerte.
-  - **Differential-Drive-Kinematik:**
-    Berechnung der Raddrehzahlen basierend auf Soll-Geschwindigkeit $v$ und Kurvenradius $r$:
-    $$v_{\text{in}} = v \cdot (1.0 - r)$$
-  - **DriveAssistant:**
-    PID-Regler, der die Gierrate (Yaw-Rate) nutzt, um den Rover aktiv auf Kurs zu halten.
+  - **Odometrie (Koppelnavigation):** Schätzung der Position $(x, y)$ durch Integration von Geschwindigkeit (mit Spannungskompensation) und Gyroskop-Winkel:
+    $$x_{t} = x_{t-1} + v_{t} \cdot \cos(\theta) \cdot \Delta t$$
+  - **DriveAssistant:** PID-Regler ($K_p=0.6$) mit statischem Bias-Trim, der die Gierrate (Yaw-Rate) nutzt, um den Rover aktiv auf Kurs zu halten.
 
 ### Schicht 3: Anwendung (Application Layer)
 
@@ -76,9 +73,8 @@ Abhängigkeiten verlaufen ausschließlich von oben nach unten
 - **Details:**
   - Implementiert die Business-Logik als endlichen Automaten (FSM).
   - Verwaltet Modi wie:
-    - Hardware-Diagnose
-    - Autonomes Fahren
-    - Fernsteuerung
+    - **Cruise:** PID-stabilisierte Geradeausfahrt.
+    - **Obstacle Avoidance:** Inertia-kompensierte 180°-Wenden.
   - Stellt sicher, dass Sicherheitschecks (z. B. Not-Aus bei Kippen) zyklisch durchlaufen werden.
 
 ---
@@ -100,11 +96,11 @@ GalaxyRVR_Profi/
 │   └── logic/              # Logik-Interfaces
 ├── src/                    # Implementierung (.cpp)
 │   ├── hal/                # Hardware-Spezifika (Treiber)
-│   ├── logic/              # Algorithmen
+│   ├── logic/              # Algorithmen (PID, Odometrie)
 │   └── main.cpp            # Einstiegspunkt & State Machine
 ├── test/                   # Unit-Tests & Diagnose-Sketches
 └── platformio.ini          # Build-Umgebungen
-```
+````
 
 -----
 
@@ -112,7 +108,6 @@ GalaxyRVR_Profi/
 
 Die Pin-Belegung ist zentral in `include/Pins.h` definiert.
 „Magische Zahlen“ im Code werden vermieden.
-Aufgrund der Timer-Limitierungen des ATmega328P wird eine Hybrid-Lösung aus Hardware- und Software-PWM genutzt.
 
 | Aktor / Sensor | Arduino-Pin | Signal-Typ       | Anmerkung                          |
 | -------------- | ----------: | ---------------- | ---------------------------------- |
@@ -121,7 +116,7 @@ Aufgrund der Timer-Limitierungen des ATmega328P wird eine Hybrid-Lösung aus Har
 | IMU (MPU6050)  |       A4,A5 | I²C              | Standard `Wire`-Library            |
 | Ultraschall    |        7, 8 | Digital I/O      | Trigger / Echo                     |
 | Servo (Tilt)   |          10 | PWM              | Kamera-Neigung                     |
-| RGB-LEDs       |          13 | Timing-kritisch  | WS2812-Protokoll                   |
+| IR-Sensoren    |       11,12 | Digital In       | Hinderniserkennung (Links/Rechts)  |
 
 -----
 
@@ -148,13 +143,7 @@ Doxygen wird mit Custom-Tags genutzt, um nicht nur das **Wie**, sondern auch das
     Verhindert implizite Typumwandlungen und erhöht die Lesbarkeit von Zustandsautomaten.
 
   * **Non-Blocking-Design:**
-    Keine `delay()`-Aufrufe in der `loop()`. Zeitsteuerung erfolgt ausschließlich über `millis()`-Vergleiche:
-
-    ```cpp
-    if (now - lastAction > INTERVAL) {
-        // ...
-    }
-    ```
+    Keine `delay()`-Aufrufe in der `loop()`. Zeitsteuerung erfolgt ausschließlich über `millis()`-Vergleiche.
 
 -----
 
@@ -202,5 +191,7 @@ Beispiel: Neuer Sensor (z. B. IR-Linienfolger) soll hinzugefügt werden.
 ## 8\. Status
 
   - **Status:** Active Maintenance
-  - **Phase:** 1.0 (Abgeschlossen) – Grundlegende Fahrt, Sensor-Fusion, PID-Regelung.
-  - **Letztes Update:** 25.11.2025
+  - **Phase:** 2.0 (Interaktion) – Arbeit an Wandverfolgung & Cliff Detection.
+  - **Meilenstein:** Phase 1 (Präzision/Odometrie) erfolgreich abgeschlossen (Tag: `v1.4.0`).
+  - **Letztes Update:** 26.11.2025
+

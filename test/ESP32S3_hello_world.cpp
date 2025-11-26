@@ -1,197 +1,132 @@
 /**
  * @file       main.cpp
- * @brief      Hardware- und Toolchain-Selbsttest für Seeed XIAO ESP32S3.
+ * @brief      "Hallo Welt" & Hardware-Selbsttest für Seeed XIAO ESP32S3.
+ * @author     Jan Unger
+ * @version    1.1.0 (ESP32 Focus)
+ * @date       2025-11-26
  *
  * @details
- * Dieses Beispielprogramm validiert grundlegende MCU-Funktionen
- * (GPIO, Timing, serielle Schnittstelle) und demonstriert – sofern
- * verfügbar – moderne C++-Features wie `std::vector` und
- * konstante Referenzen.
- *
- * Der Code ist bewusst so gestaltet, dass er sowohl auf ESP32-
- * Architekturen als auch auf klassischen AVR-Boards (z. B. Uno,
- * ATmega328P) übersetzbar ist. Plattformspezifische Teile werden
- * über `#if`/`#else`-Blöcke gekapselt.
- *
- * @author     Jan Unger
- * @version    1.0.2  (Fehlerbereinigung AVR)
- * @date       2025-11-22
+ * Dieser Sketch dient als "Proof of Concept" für die moderne C++-Entwicklung
+ * auf dem ESP32. Er demonstriert:
+ * 1. **Modern C++ (C++20):** Nutzung von `std::vector` und Range-based Loops.
+ * 2. **Non-Blocking I/O:** Zeitsteuerung ohne `delay()`.
+ * 3. **Hardware-Check:** Blinken der User-LED (GPIO 21).
  *
  * @note
- *   - Plattform: Dual-Plattform-kompatibel (ESP32S3 / ATmega328P)
- *   - Toolchain: GCC 8.4 (C++17/20-kompatibel)
+ * Um Konflikte mit den AVR-Treibern (HAL) zu vermeiden, nutzt dieser Sketch
+ * keine Module aus `src/hal/` oder `src/logic/`, sondern ist standalone.
+ *
+ * @platform Seeed Studio XIAO ESP32S3
  */
 
 #include <Arduino.h>
+#include <vector> // STL-Container (nur auf ESP32/ARM möglich, nicht auf AVR)
 
 // ----------------------------------------------------------------------
-// BEDINGTE KOMPILIERUNG: STL-FEATURES
-// ----------------------------------------------------------------------
-// `#include <vector>` und STL-Code nur für ESP32-Architekturen einbinden.
-#if defined(ARDUINO_ARCH_ESP32) || defined(ARDUINO_ARCH_ESP32S3)
-#include <vector>
-#define USE_STL_FEATURES
-#endif
-
-// ----------------------------------------------------------------------
-// GLOBALE KONFIGURATION & HARDWARE-DEFINITIONEN
+// 1. HARDWARE-KONFIGURATION
 // ----------------------------------------------------------------------
 
 /**
- * @brief Pin-Nummer der Onboard-User-LED.
- *
- * @note
- * Wird als `constexpr` definiert, damit der Wert im Programmspeicher
- * abgelegt und kein RAM verbraucht wird.
- *
- * @hardware ESP32S3: GPIO 21
+ * @brief   Pin-Nummer der Onboard-User-LED.
+ * @hardware XIAO ESP32S3: GPIO 21 (Low-Active? Zu prüfen).
+ * @note    `constexpr` sorgt dafür, dass der Wert zur Compile-Zeit feststeht
+ * und keinen RAM verbraucht.
  */
-constexpr int kLedPin = 21;
+constexpr int PIN_USER_LED = 21;
 
 /**
- * @struct StatusConfig
- * @brief  Beispielhafte Konfigurationsstruktur für ein Peripherie-Modul.
- *
- * Dient in diesem Beispiel zur Demonstration von Initialisierung
- * (z. B. mittels Designated Initializers) und zur Ausgabe über
- * die serielle Schnittstelle.
+ * @struct  SystemStatus
+ * @brief   Datenstruktur für Telemetrie-Simulation.
  */
-struct StatusConfig {
-    const char *moduleName; ///< Klartext-Bezeichnung des Moduls.
-    int id;                 ///< Interne ID oder Adressierung des Moduls.
-    bool active;            ///< Aktiv-Status (true = aktiv/verwenden).
+struct SystemStatus {
+    const char *moduleName; ///< Name des Subsystems
+    uint32_t uptime;        ///< Laufzeit in ms
+    bool active;            ///< Status-Flag
 };
 
-// --- Globale Laufzeit-Variablen ---
-
-/// Zeitstempel der letzten Status-Aktualisierung (ms seit Programmstart).
-unsigned long lastUpdate = 0;
-
-/// Aktueller LED-Zustand (true = ein, false = aus).
-bool ledState = false;
-
 // ----------------------------------------------------------------------
-// FUNKTIONEN (plattformspezifisch)
+// 2. FUNKTIONEN
 // ----------------------------------------------------------------------
 
-#ifdef USE_STL_FEATURES
 /**
- * @brief  Verarbeitet exemplarische Daten aus einem STL-Vektor (ESP32).
+ * @brief   Verarbeitet Daten mittels C++ Standard Template Library (STL).
  *
  * @details
- * Die Funktion demonstriert:
- *  - die Nutzung von `std::vector<int>` auf ESP32-Plattformen,
- *  - die effiziente Übergabe per `const`-Referenz,
- *  - eine einfache Ausgabe der Elemente und der Vektorgröße via Serial.
+ * Zeigt, wie `std::vector` effizient per `const reference` übergeben wird,
+ * um unnötige Datenkopien im RAM zu vermeiden.
  *
- * @param daten Konstante Referenz auf den zu verarbeitenden Vektor.
+ * @param   data  Konstante Referenz auf den Vektor.
  */
-void verarbeiteDaten(const std::vector<int> &daten) {
-    Serial.print("-> Vektor Check: [ ");
-    for (const auto &wert : daten) {
-        Serial.print(wert);
-        Serial.print(" ");
+void processData(const std::vector<int> &data) {
+    Serial.printf("[STL Check] Vektor Größe: %d | Elemente: ", data.size());
+
+    // Modern C++: Range-based for loop
+    for (const int &val : data) {
+        Serial.printf("%d ", val);
     }
-    Serial.print("] | Größe: ");
-    Serial.println(daten.size());
+    Serial.println();
 }
-#else
-/**
- * @brief  Dummy-Implementierung für ressourcenarme Plattformen (z. B. AVR).
- *
- * @details
- * Auf klassischen AVR-Controllern steht die C++-Standardbibliothek
- * in der Regel nicht zur Verfügung. Diese Funktion dient als
- * Platzhalter, um den Aufruf im restlichen Code zu erhalten,
- * ohne zusätzlichen Flash- oder RAM-Verbrauch zu erzeugen.
- */
-void verarbeiteDaten_AVR_Dummy() {
-    // Absichtlich leer: Verhindert lediglich Kompilierungsfehler.
-}
-#endif // USE_STL_FEATURES
 
 // ----------------------------------------------------------------------
-// HAUPTPROGRAMM
+// 3. MAIN LOOP & SETUP
 // ----------------------------------------------------------------------
 
 /**
- * @brief Einmalige Initialisierung von Hardware und
- * Kommunikationsschnittstellen.
- *
- * @details
- * - Initialisiert die serielle Schnittstelle (115200 Baud).
- * - Konfiguriert den LED-Pin als Ausgang.
- * - Wartet kurz (2 s), um den seriellen Monitor zu verbinden.
- * - Legt eine beispielhafte Status-Konfiguration an und gibt diese
- *   plattformspezifisch (ESP32 vs. AVR) aus.
- *
- * @post
- *  Die LED-Pinrichtung ist gesetzt, die serielle Schnittstelle bereit
- *  und der Benutzer hat eine erste Statusmeldung im Terminal.
+ * @brief   Initialisierung der Hardware.
+ * @pre     USB-Serial muss verbunden sein.
  */
 void setup() {
+    // 1. Serielle Schnittstelle starten
     Serial.begin(115200);
 
-    pinMode(kLedPin, OUTPUT);
+    // 2. GPIO konfigurieren
+    pinMode(PIN_USER_LED, OUTPUT);
 
-    // BLOCKING: Wartezeit (2s), z. B. für das Öffnen des Serial Monitors.
-    delay(2000);
+    // 3. Warten auf USB (wichtig bei Native USB des S3)
+    // Wir warten max. 2 Sekunden, damit der Boot nicht ewig hängt,
+    // falls kein PC angeschlossen ist.
+    unsigned long startWait = millis();
+    while (!Serial && (millis() - startWait < 2000)) {
+        delay(10);
+    }
 
-    Serial.println("\n=== Hardware Test (Dual-Platform) ===");
-
-    StatusConfig sensorConf = {"IMU-Sensor", 42, true};
-
-    // --- Korrekte Ausgabe für unterschiedliche Plattformen ---
-#if defined(ARDUINO_ARCH_ESP32) || defined(ARDUINO_ARCH_ESP32S3)
-    // ESP32 besitzt Serial.printf()
-    Serial.printf("Konfiguriert: %s (ID: %d)\n", sensorConf.moduleName,
-                  sensorConf.id);
-#else
-    // AVR: Serial.printf() nicht verfügbar -> klassische Ausgabe.
-    Serial.print("Konfiguriert: ");
-    Serial.print(sensorConf.moduleName);
-    Serial.print(" (ID: ");
-    Serial.print(sensorConf.id);
-    Serial.println(")");
-#endif
+    Serial.println("\n=== GALAXY RVR: ESP32 CORE TEST ===");
+    Serial.printf("CPU Frequenz: %d MHz\n", ESP.getCpuFreqMHz());
+    Serial.printf("Flash Größe: %d MB\n",
+                  ESP.getFlashChipSize() / (1024 * 1024));
 }
 
 /**
- * @brief Hauptschleife des Programms (Control Loop).
+ * @brief   Hauptschleife (Nicht-blockierend).
  *
  * @details
- * Die Schleife arbeitet vollständig non-blocking über einen
- * Zeitvergleich (Polling-Ansatz):
- *  - Alle 500 ms wird der LED-Zustand getoggelt.
- *  - Auf ESP32-Systemen wird zusätzlich ein Test-Vektor erzeugt
- *    und an @c verarbeiteDaten() übergeben.
- *  - Auf AVR-Systemen wird die Dummy-Funktion @c verarbeiteDaten_AVR_Dummy()
- *    aufgerufen.
- *
- * @note
- * Der Einsatz von `millis()` vermeidet Blockierungen durch `delay()` und
- * eignet sich als Vorlage für einfache zeitgesteuerte Aufgaben.
+ * Implementiert einen einfachen Scheduler, der alle 500ms:
+ * 1. Die LED umschaltet (Heartbeat).
+ * 2. Einen dynamischen Vektor erzeugt und verarbeitet.
  */
 void loop() {
+    static unsigned long lastUpdate = 0;
+    static bool ledState = false;
+
     unsigned long now = millis();
 
-    // --- TIMING / POLLING (Non-Blocking) ---
+    // Delta-Time Check (500ms Intervall)
     if (now - lastUpdate >= 500) {
         lastUpdate = now;
 
-        // LED toggeln (ein/aus)
+        // A. LED Toggeln
         ledState = !ledState;
-        digitalWrite(kLedPin, ledState ? LOW : HIGH);
+        // Hinweis: Viele Onboard-LEDs sind "Low Active" (LOW = An).
+        // Wir schreiben hier den logischen Zustand.
+        digitalWrite(PIN_USER_LED, ledState ? LOW : HIGH);
 
-        // Aufruf der jeweils passenden Testfunktion
-#ifdef USE_STL_FEATURES
-        // Vektor erstellen und Funktion aufrufen (NUR ESP32)
-        std::vector<int> testDaten = {10, 20,
-                                      static_cast<int>(random(100, 999))};
-        verarbeiteDaten(testDaten);
-#else
-        // Platzhalter-Funktion für AVR (NUR UNO/ATmega)
-        verarbeiteDaten_AVR_Dummy();
-#endif
+        // B. Modern C++ Features testen
+        // Erstelle dynamisch einen Vektor mit Zufallszahlen
+        std::vector<int> sensorValues = {
+            10, 20, static_cast<int>(random(100, 999)) // Zufallswert
+        };
+
+        // Verarbeite die Daten
+        processData(sensorValues);
     }
 }
